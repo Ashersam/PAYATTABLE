@@ -1,123 +1,123 @@
 import { getOutletConfig } from "./outletConfig.service.js";
 
 export const getRaptorToken = async () => {
-    const config = await getOutletConfig();
+  const config = await getOutletConfig();
 
-    const body = new URLSearchParams();
+  const body = new URLSearchParams({
+    username: config.username,
+    password: config.password,
+  });
 
-    body.append("username", config.username);
-    body.append("password", config.password);
+  const response = await fetch(
+    `${config.outlet_api_url}/token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }
+  );
 
-    const response = await fetch(
-        `${config.outlet_api_url}/token`,
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: body.toString(),
-        }
+  if (!response.ok) {
+    const text = await response.text();
+
+    throw new Error(
+      `Raptor token failed: ${response.status} ${text}`
     );
+  }
 
-    if (!response.ok) {
-        const text = await response.text();
+  const data = await response.json();
 
-        throw new Error(
-            `Raptor token failed: ${response.status} ${text}`
-        );
-    }
+  if (!data.access_token) {
+    throw new Error("Raptor token missing access_token");
+  }
 
-    const data = await response.json();
-
-    if (!data.access_token) {
-        throw new Error("Raptor token missing access_token");
-    }
-
-    return {
-        accessToken: data.access_token,
-        tokenType: data.token_type || "bearer",
-        config,
-    };
+  return {
+    accessToken: data.access_token,
+    tokenType: data.token_type || "bearer",
+    config,
+  };
 };
 
-export const getRaptorSalesNo = async (tableNo) => {
-    const {
-        accessToken,
-        config,
-    } = await getRaptorToken();
+export const getRaptorSalesNo = async (
+  config,
+  accessToken,
+  tableNo
+) => {
+  const response = await fetch(
+    `${config.outlet_api_url}/hds/salesno`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        posid: config.posid,
+        operatorid: config.operatorno,
+        tableno: tableNo,
+      }),
+    }
+  );
 
-    const response = await fetch(
-        `${config.outlet_api_url}/hds/salesno`,
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-                posid: config.posid,
-                operatorid: config.operatorno,
-                tableno: tableNo,
-            }),
-        }
+  if (!response.ok) {
+    const text = await response.text();
+
+    throw new Error(
+      `Raptor salesno failed: ${response.status} ${text}`
     );
+  }
 
-    if (!response.ok) {
-        const text = await response.text();
+  const data = await response.json();
 
-        throw new Error(
-            `Raptor salesno failed: ${response.status} ${text}`
-        );
-    }
+  if (!data.salesno) {
+    throw new Error("Raptor salesno not returned");
+  }
 
-    const data = await response.json();
-
-    if (!data.salesno) {
-        throw new Error("Raptor salesno not returned");
-    }
-
-    return data.salesno;
+  return data.salesno;
 };
 
 export const getRaptorBill = async (tableNo) => {
-    const {
-        accessToken,
-        config,
-    } = await getRaptorToken();
+  const {
+    accessToken,
+    config,
+  } = await getRaptorToken();
 
-    const salesno = await getRaptorSalesNo(tableNo);
+  const salesno = await getRaptorSalesNo(
+    config,
+    accessToken,
+    tableNo
+  );
 
-    const response = await fetch(
-        `${config.outlet_api_url}/info/viewbill`,
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-                posid: config.posid,
-                operatorno: config.operatorno,
-                salesno,
-                splitno: 0,
-                tableno: tableNo,
-            }),
-        }
-    );
-
-    if (!response.ok) {
-        const text = await response.text();
-
-        throw new Error(
-            `Raptor viewbill failed: ${response.status} ${text}`
-        );
+  const response = await fetch(
+    `${config.outlet_api_url}/info/viewbill`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        posid: config.posid,
+        operatorno: config.operatorno,
+        salesno,
+        splitno: 0,
+        tableno: tableNo,
+      }),
     }
+  );
 
-    const data = await response.json();
+  if (!response.ok) {
+    const text = await response.text();
 
-    return data;
+    throw new Error(
+      `Raptor viewbill failed: ${response.status} ${text}`
+    );
+  }
+
+  return await response.json();
 };
-
 export const mapRaptorBill = (data) => {
     const heldTable = data.held_table;
   

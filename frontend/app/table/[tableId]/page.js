@@ -122,22 +122,40 @@ export default function Page() {
   }, [showFinalSuccess, bill]);
 
   const handlePay = async () => {
-    setProcessing(true);
+    try {
+      setProcessing(true);
 
-    const res = await createPayment({
-      billId: bill.id,
-      receiptNo: bill.id, // or bill.receipt_no if using that
-      amount: paymentAmount,
-      tip: Number(tip || 0),
-      currency: bill.currency
-    });
-    if (res?.error === "Bill already paid") {
-      setIsPaid(true);
+      const paymentAmount = Number(
+        (balance + Number(tip || 0)).toFixed(2)
+      );
+
+      console.log("💰 PAYMENT AMOUNT:", paymentAmount);
+      console.log("🧾 RECEIPT:", bill.receipt_no);
+      console.log("💵 TIP:", tip);
+
+      const res = await createPayment({
+        billId: bill.receipt_no,
+        amount: paymentAmount,
+        tip: Number(tip || 0),
+        currency: bill.currency,
+      });
+
+      console.log("💳 CREATE PAYMENT RESPONSE:", res);
+
+      if (!res || res.error) {
+        console.error("❌ Payment creation failed:", res);
+        setProcessing(false);
+        return;
+      }
+
+      setIntentId(res.intent_id);
+      setClientSecret(res.client_secret);
+      setCurrency(res.currency || bill.currency);
+
+    } catch (error) {
+      console.error("❌ handlePay error:", error);
+      setProcessing(false);
     }
-
-    setIntentId(res.intent_id);
-    setClientSecret(res.client_secret);
-    setCurrency(res.currency);
   };
 
   // ✅ 1. NO BILL UI
@@ -170,10 +188,9 @@ export default function Page() {
   // const totalWithTip = Number((subtotal + tip).toFixed(2));
 
   const subtotal = Number(bill.subtotal || 0);
-  const total = Number(bill.total || 0);
-  const balance = Number(bill.balance || 0);
+  const payableAmount = Number(bill.balance || 0);
   const totalWithTip = Number(
-    (balance + Number(tip || 0)).toFixed(2)
+    (payableAmount + Number(tip || 0)).toFixed(2)
   );
 
   return (
@@ -201,8 +218,11 @@ export default function Page() {
 
 
         <BillSummary
-          subtotal={bill.subtotal}
-          taxes={bill.taxes}
+          subtotal={Number(bill.subtotal || 0)}
+          discount={Number(bill.discount || 0)}
+          surcharge={Number(bill.surcharge || 0)}
+          taxes={bill.taxes || []}
+          total={Number(bill.balance || 0)}
           symbol={symbol}
         />
 

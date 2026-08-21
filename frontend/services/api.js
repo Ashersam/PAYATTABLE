@@ -1,8 +1,22 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL;
 
-  export const getBill = (tableId) =>
-  fetch(`${BASE}/bill/${tableId}`).then(r => r.json());
+  // export const getBill = (tableId) =>
+  // fetch(`${BASE}/bill/${tableId}`).then(r => r.json());
 
+  export const getBill = async (tableId) => {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/bill/${tableId}`
+    );
+  
+    const data = await res.json();
+  
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to fetch bill");
+    }
+  
+    return data;
+  };
+  
   export const createPayment = async (payload) => {
     const res = await fetch(`${BASE}/payment`, {
       method: "POST",

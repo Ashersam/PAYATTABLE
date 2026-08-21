@@ -30,7 +30,25 @@ export const getBill = async (req, res) => {
       });
     }
 
-    return res.json(bill);
+     // Save/update Raptor bill in our local PostgreSQL
+     const savedBill = await syncRaptorBill(bill);
+
+     console.log(
+       "💾 Bill synced:",
+       savedBill.receipt_no,
+       savedBill.id
+     );
+ 
+     return res.json({
+       ...bill,
+ 
+       // local DB ID
+       id: savedBill.id,
+ 
+       // keep Raptor values
+       receipt_no: bill.receipt_no,
+       balance: bill.balance,
+     });
 
   } catch (err) {
     console.error("❌ getBill error:", err);
