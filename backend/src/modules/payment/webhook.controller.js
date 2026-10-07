@@ -1,5 +1,5 @@
 import { db } from "../../db/index.js";
-
+import { doRaptorPayment } from "../../services/raptor.service.js";
 export const handleWebhook = async (req, res) => {
   const event = req.body;
 
@@ -48,7 +48,7 @@ export const handlePaymentSuccess = async (req, res) => {
     const intentId = event.data.object.id;
 
     console.log("EVENT ID :", event.id);
-console.log("INTENT ID:", event.data.object.id);
+    console.log("INTENT ID:", event.data.object.id);
 
     // 🔐 idempotency check
     const exists = await db.query(
@@ -88,6 +88,37 @@ console.log("INTENT ID:", event.data.object.id);
       console.error("🚨 AMOUNT MISMATCH");
       return res.status(400).send("Amount mismatch");
     }
+
+    // ----------------------------------------------------
+    // 🔥 Raptor POS PAYMENT
+    // ----------------------------------------------------
+
+    const billRes = await db.query(
+      "SELECT * FROM bills WHERE id=$1",
+      [payment.bill_id]
+    );
+
+    const bill = billRes.rows[0];
+
+    if (!bill) {
+      console.error("❌ Bill not found:", payment.bill_id);
+      return res.status(500).send("Bill not found");
+    }
+
+    console.log("🧾 BILL FOR RAPTOR PAYMENT:");
+    console.log(JSON.stringify(bill, null, 2));
+
+    const raptorResult = await doRaptorPayment({
+      tableNo: bill.table_id,
+      salesNo: bill.salesno,
+      splitNo: bill.splitno || 0,
+      paymentType: 10,
+      paidAmount: Number(payment.amount),
+      customerId: "",
+    });
+
+    console.log("✅ RAPTOR PAYMENT SUCCESS:");
+    console.log(JSON.stringify(raptorResult, null, 2));
 
     // ✅ mark PAID
     await db.query(

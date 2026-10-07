@@ -1,52 +1,67 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL;
 
-  // export const getBill = (tableId) =>
-  // fetch(`${BASE}/bill/${tableId}`).then(r => r.json());
+// export const getBill = (tableId) =>
+// fetch(`${BASE}/bill/${tableId}`).then(r => r.json());
 
-  export const getBill = async (tableId) => {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/bill/${tableId}`
+export const getBill = async (tableId) => {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/bill/${tableId}`
+  );
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to fetch bill");
+  }
+
+  return data;
+};
+
+export const createPayment = async (payload) => {
+  const res = await fetch(`${BASE}/payment`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    const error = new Error(
+      data?.error || "Payment creation failed"
     );
-  
-    const data = await res.json();
-  
-    if (!res.ok) {
-      throw new Error(data?.error || "Failed to fetch bill");
-    }
-  
-    return data;
-  };
-  
-  export const createPayment = async (payload) => {
-    const res = await fetch(`${BASE}/payment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  
-    return res.json();
-  };
 
-  export const confirmPayment = async (intentId, billId, amount, tip, currency) => {
-    const res = await fetch(`${BASE}/payment/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        intentId,
-        billId,
-        amount,
-        tip,
-        currency,
-      }),
-    });
-  
-    return res.json();
-  };
+    error.status = res.status;
+    error.code = data?.code;
 
-  export const getReceipt = async (receiptNo) => {
-    const res = await fetch(
-      `${BASE}/payment/receipt/${receiptNo}`
-    );
-  
-    return res.json();
-  };
+    throw error;
+  }
+
+  return data;
+};
+
+export const confirmPayment = async (intentId, billId, amount, tip, currency) => {
+  const res = await fetch(`${BASE}/payment/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      intentId,
+      billId,
+      amount,
+      tip,
+      currency,
+    }),
+  });
+
+  return res.json();
+};
+
+export const getReceipt = async (receiptNo) => {
+  const res = await fetch(
+    `${BASE}/payment/receipt/${receiptNo}`
+  );
+
+  return res.json();
+};

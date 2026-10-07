@@ -1,86 +1,193 @@
 import { db } from "../db/index.js";
 
 export const syncRaptorBill = async (bill) => {
-  const result = await db.query(
+  // ---------------------------------------------------------
+  // 1. Find existing bill by Raptor receipt number
+  // ---------------------------------------------------------
+  const existingRes = await db.query(
     `
-    INSERT INTO bills (
-      receipt_no,
-      table_id,
-      sub_total,
-      total,
-      balance,
-      paid_total,
-      total_disc,
-      surcharge,
-      covers,
-      currency,
-      status,
-      total_tax0,
-      tax0_name
-    )
-    VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
-    )
-    ON CONFLICT (receipt_no)
-    DO UPDATE SET
-      table_id = EXCLUDED.table_id,
-      sub_total = EXCLUDED.sub_total,
-      total = EXCLUDED.total,
-      balance = EXCLUDED.balance,
-      paid_total = EXCLUDED.paid_total,
-      total_disc = EXCLUDED.total_disc,
-      surcharge = EXCLUDED.surcharge,
-      covers = EXCLUDED.covers,
-      currency = EXCLUDED.currency,
-      status = EXCLUDED.status,
-      total_tax0 = EXCLUDED.total_tax0,
-      tax0_name = EXCLUDED.tax0_name
-    RETURNING *;
+    SELECT id
+    FROM bills
+    WHERE receipt_no = $1
+    LIMIT 1
     `,
-    [
-      bill.receipt_no,
-      bill.table_id,
-      bill.subtotal,
-      bill.total,
-      bill.balance,
-      bill.paid_total,
-      bill.discount,
-      bill.surcharge,
-      bill.covers,
-      bill.currency,
-      bill.status,
-      bill.taxes?.find(t => t.name === "9% GST")?.amount || 0,
-      "9% GST",
-    ]
+    [bill.receipt_no]
   );
 
-  const savedBill = result.rows[0];
+  let billId;
 
-  // Replace existing items for this bill
+  // ---------------------------------------------------------
+  // 2. INSERT new bill
+  // ---------------------------------------------------------
+  if (!existingRes.rows.length) {
+    const insertRes = await db.query(
+      `
+      INSERT INTO bills
+      (
+        table_id,
+        total,
+        status,
+        currency,
+        receipt_no,
+        sub_total,
+        total_disc,
+        total_tax0,
+        tax0_name,
+        total_tax1,
+        tax1_name,
+        total_tax2,
+        tax2_name,
+        total_tax3,
+        tax3_name,
+        salesno,
+        splitno,
+        posid,
+        operatorno
+      )
+      VALUES
+      (
+        $1,$2,$3,$4,$5,
+        $6,$7,
+        $8,$9,
+        $10,$11,
+        $12,$13,
+        $14,$15,$16,$17,$18,$19
+      )
+      RETURNING id
+      `,
+      [
+        bill.table_id,
+        bill.total,
+        bill.status,
+        bill.currency,
+        bill.receipt_no,
+        bill.subtotal,
+        bill.discount,
+
+        bill.taxes?.[0]?.amount || 0,
+        bill.taxes?.[0]?.name || "",
+
+        bill.taxes?.[1]?.amount || 0,
+        bill.taxes?.[1]?.name || "",
+
+        bill.taxes?.[2]?.amount || 0,
+        bill.taxes?.[2]?.name || "",
+
+        bill.taxes?.[3]?.amount || 0,
+        bill.taxes?.[3]?.name || "",
+        bill.salesno,
+        bill.splitno ?? 0,
+        bill.posid,
+        bill.operatorno,
+      ]
+    );
+
+    billId = insertRes.rows[0].id;
+  }
+
+  // ---------------------------------------------------------
+  // 3. UPDATE existing bill
+  // ---------------------------------------------------------
+  else {
+    billId = existingRes.rows[0].id;
+
+    await db.query(
+      `
+      UPDATE bills
+      SET
+        table_id = $1,
+        total = $2,
+        status = $3,
+        currency = $4,
+        sub_total = $5,
+        total_disc = $6,
+
+        total_tax0 = $7,
+        tax0_name = $8,
+
+        total_tax1 = $9,
+        tax1_name = $10,
+
+        total_tax2 = $11,
+        tax2_name = $12,
+
+        total_tax3 = $13,
+        tax3_name = $14,
+        salesno = $15,
+        splitno = $16,
+        posid = $17,
+        operatorno = $18
+
+      WHERE id = $19
+      `,
+      [
+        bill.table_id,
+        bill.total,
+        bill.status,
+        bill.currency,
+        bill.subtotal,
+        bill.discount,
+
+        bill.taxes?.[0]?.amount || 0,
+        bill.taxes?.[0]?.name || "",
+
+        bill.taxes?.[1]?.amount || 0,
+        bill.taxes?.[1]?.name || "",
+
+        bill.taxes?.[2]?.amount || 0,
+        bill.taxes?.[2]?.name || "",
+
+        bill.taxes?.[3]?.amount || 0,
+        bill.taxes?.[3]?.name || "",
+
+        // Raptor identifiers
+        bill.salesno,
+        bill.splitno ?? 0,
+        bill.posid,
+        bill.operatorno,
+
+        billId,
+      ]
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 4. Replace bill items
+  // ---------------------------------------------------------
+
   await db.query(
-    `DELETE FROM bill_items WHERE bill_id=$1`,
-    [savedBill.id]
+    `
+    DELETE FROM bill_items
+    WHERE bill_id = $1
+    `,
+    [billId]
   );
 
   for (const item of bill.items || []) {
     await db.query(
       `
-      INSERT INTO bill_items (
+      INSERT INTO bill_items
+      (
         bill_id,
         name,
+        price,
         quantity,
-        price
+        qty,
+        amount
       )
-      VALUES ($1,$2,$3,$4)
+      VALUES
+      ($1,$2,$3,$4,$5,$6)
       `,
       [
-        savedBill.id,
+        billId,
         item.name,
+        item.price,
+        item.quantity,
         item.quantity,
         item.price,
       ]
     );
   }
 
-  return savedBill;
+  return billId;
 };

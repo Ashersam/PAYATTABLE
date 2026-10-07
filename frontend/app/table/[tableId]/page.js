@@ -80,7 +80,7 @@ export default function Page() {
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/payment/status?billId=${bill.id}`
+          `${process.env.NEXT_PUBLIC_API_URL}/payment/status?billId=${bill.receipt_no}`
         );
 
         if (!res.ok) return;
@@ -97,7 +97,7 @@ export default function Page() {
 
           setTimeout(() => {
             router.push(
-              `/success?receiptNo=${bill.id}`
+              `/success?receiptNo=${bill.receipt_no}`
             );
           }, 2000);
         }
@@ -115,18 +115,54 @@ export default function Page() {
         //   `/success?amount=${bill.total}&currency=${bill.currency}`
         // );
         router.push(
-          `/success?receiptNo=${bill.id}`
+          `/success?receiptNo=${bill.receipt_no}`
         );
       }, 1800);
     }
   }, [showFinalSuccess, bill]);
+
+  // const handlePay = async () => {
+  //   try {
+  //     setProcessing(true);
+
+  //     const res = await createPayment({
+  //       billId: bill.receipt_no,
+  //       tip: Number(tip || 0),
+  //       currency: bill.currency,
+  //     });
+
+  //     console.log("💳 CREATE PAYMENT RESPONSE:", res);
+
+  //     if (res?.error) {
+  //       console.error("❌ Payment creation failed:", res.error);
+
+  //       setProcessing(false);
+
+  //       if (
+  //         res.error === "Bill already paid"
+  //       ) {
+  //         setIsPaid(true);
+  //       }
+
+  //       return;
+  //     }
+
+  //     setIntentId(res.intent_id);
+  //     setClientSecret(res.client_secret);
+  //     setCurrency(res.currency);
+
+  //   } catch (err) {
+  //     console.error("❌ Payment error:", err);
+  //     setProcessing(false);
+  //   }
+  // };
 
   const handlePay = async () => {
     try {
       setProcessing(true);
 
       const paymentAmount = Number(
-        (balance + Number(tip || 0)).toFixed(2)
+        (payableAmount + Number(tip || 0)).toFixed(2)
       );
 
       console.log("💰 PAYMENT AMOUNT:", paymentAmount);
@@ -207,10 +243,15 @@ export default function Page() {
         />
       )}
 
-      <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-xl overflow-hidden">
+      <div className="w-full max-w-md mx-auto bg-white rounded-[28px] shadow-[0_8px_35px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
 
         {/* Header */}
-        <HeaderCard tableId={params.tableId} />
+        <HeaderCard
+          tableId={params.tableId}
+          receiptNo={bill.receipt_no}
+          operatorName={bill.raptor.operatorname}
+          openDate={bill.raptor.orderdate}
+        />
 
         {/* RECEIPT */}
 
@@ -228,7 +269,7 @@ export default function Page() {
 
         <TipSelector total={subtotal} tip={tip} setTip={setTip} />
         {/* TOTAL SECTION */}
-        <div className="px-5 py-4 border-t bg-white">
+        <div className="px-5 mt-2 py-4 border-t bg-white">
 
           <div className="flex text-gray-700 justify-between items-center text-lg font-semibold">
             <span>Total</span>
@@ -294,7 +335,7 @@ export default function Page() {
               )}
             </>
           ) : (
-            <SuccessPage />
+            <SuccessPage receiptNo={bill.receipt_no} />
           )}
         </div>
       </div>

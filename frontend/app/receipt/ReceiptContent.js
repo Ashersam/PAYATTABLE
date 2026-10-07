@@ -93,7 +93,7 @@ export default function ReceiptPage() {
             <span>POS: POS001</span>
           </div>
           <div className="flex justify-between">
-            <span>Rcpt#: {bill.id}</span>
+            <span>Rcpt#: {bill.receipt_no}</span>
             <span>{new Date().toLocaleString()}</span>
           </div>
         </div>

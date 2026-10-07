@@ -1,5 +1,5 @@
 import express from "express";
-import { createPayment, getPaymentStatus, getReceipt } from "./payment.controller.js";
+import { createPayment, getEReceipt, getPaymentStatus, getReceipt } from "./payment.controller.js";
 import { confirmPayment } from "./payment.controller.js";
 import { handlePaymentSuccess } from "./webhook.controller.js";
 
@@ -10,5 +10,6 @@ router.post("/confirm", confirmPayment);
 router.post("/webhook/airwallex", handlePaymentSuccess);
 router.get("/status", getPaymentStatus);
 router.get("/receipt/:receiptNo", getReceipt);
+router.get("/e-receipt/:receiptNo", getEReceipt);
 
 export default router;

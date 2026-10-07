@@ -5,5 +5,4 @@ const router = express.Router();
 
 // router.get("/", getBill);
 router.get("/:tableId", getBill);
-
 export default router;

@@ -1,7 +1,9 @@
 import {
   getRaptorBill,
-  mapRaptorBill,
+  mapRaptorBill
 } from "../../services/raptor.service.js";
+
+import { syncRaptorBill } from "../../services/billSync.service.js";
 
 export const getBill = async (req, res) => {
   try {
@@ -15,12 +17,20 @@ export const getBill = async (req, res) => {
 
     console.log("🔎 Fetching Raptor bill for table:", tableId);
 
+    // -------------------------------------------------------
+    // 1. Get live bill from Raptor
+    // -------------------------------------------------------
+
     const raptorData = await getRaptorBill(tableId);
 
     console.log(
       "📦 Raptor response:",
       JSON.stringify(raptorData, null, 2)
     );
+
+    // -------------------------------------------------------
+    // 2. Convert Raptor response to our common format
+    // -------------------------------------------------------
 
     const bill = mapRaptorBill(raptorData);
 
@@ -30,25 +40,34 @@ export const getBill = async (req, res) => {
       });
     }
 
-     // Save/update Raptor bill in our local PostgreSQL
-     const savedBill = await syncRaptorBill(bill);
+    // -------------------------------------------------------
+    // 3. Save/update the bill in PostgreSQL
+    // -------------------------------------------------------
 
-     console.log(
-       "💾 Bill synced:",
-       savedBill.receipt_no,
-       savedBill.id
-     );
- 
-     return res.json({
-       ...bill,
- 
-       // local DB ID
-       id: savedBill.id,
- 
-       // keep Raptor values
-       receipt_no: bill.receipt_no,
-       balance: bill.balance,
-     });
+    const dbBillId = await syncRaptorBill(bill);
+
+    console.log(
+      "💾 Bill synced to PostgreSQL:",
+      {
+        dbBillId,
+        receiptNo: bill.receipt_no,
+        tableId: bill.table_id,
+      }
+    );
+
+    // -------------------------------------------------------
+    // 4. Return the live Raptor bill to frontend
+    // -------------------------------------------------------
+
+    return res.json({
+      ...bill,
+
+      // PostgreSQL internal ID
+      db_id: dbBillId,
+
+      // Raptor sales number remains separate
+      raptor_salesno: bill.raptor?.salesno,
+    });
 
   } catch (err) {
     console.error("❌ getBill error:", err);
@@ -59,32 +78,4 @@ export const getBill = async (req, res) => {
     });
   }
 };
-// import { POS } from "../../adapters/pos.adapter.js";
-// export const getBill = async (req, res) => {
-//   const { tableId } = req.params;
-
-//   const posBill = await POS.getBill(tableId);
-
-//   if (!posBill) {
-//     return res.status(404).json({ error: "No active bill" });
-//   }
-
-//   // 🔁 also send UI-friendly format
-//   const mapped = {
-//     id: posBill.receipt_no,
-//     table_id: tableId,
-//     currency: "SGD",
-//     total: posBill.grand_total,
-//     items: posBill.receipt_items.map((i, idx) => ({
-//       id: idx,
-//       name: i.name,
-//       price: i.amount,
-//       quantity: i.qty,
-//     })),
-//     pos_raw: posBill, // 🔥 important for future
-//   };
-
-//   res.json(mapped);
-// };
-
 

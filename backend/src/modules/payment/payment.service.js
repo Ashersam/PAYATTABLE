@@ -37,6 +37,7 @@ export const createPaymentIntent = async (bill, tip) => {
       account_id_external: process.env.CONNECTED_ACCOUNT_ID,
       payment_source: process.env.PAYMENT_SOURCE,
       partner_id: process.env.PARTNER_ID,
+      method_type: process.env.PAYMENT_METHOD_TYPE, 
       pos_id: "POS001"
     },
   };

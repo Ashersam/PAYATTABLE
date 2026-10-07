@@ -1,6 +1,7 @@
 import { db } from "../../db/index.js";
 import { createPaymentIntent } from "./payment.service.js";
 import { POS } from "../../adapters/pos.adapter.js";
+import { getRaptorEReceipt } from "../../services/raptor.service.js";
 
 // export const createPayment = async (req, res) => {
 //   try {
@@ -228,65 +229,237 @@ export const confirmPayment = async (req, res) => {
   }
 };
 
+// export const createPayment = async (req, res) => {
+//   try {
+//     const { billId, amount, tip, currency } = req.body;
+
+//     // 🔐 fetch bill from DB
+//     const billRes = await db.query(
+//       "SELECT * FROM bills WHERE receipt_no=$1",
+//       [billId]
+//     );
+
+//     const bill = billRes.rows[0];
+//     if (!bill) return res.status(404).json({ error: "Bill not found" });
+
+//     // 🔐 validate amount (IMPORTANT)
+//     if (Number(amount) <= 0) {
+//       return res.status(400).json({ error: "Invalid amount" });
+//     }
+
+//     // 🔐 prevent duplicate paid
+//     const existing = await db.query(
+//       "SELECT * FROM payments WHERE bill_id=$1 AND status='PAID'",
+//       [bill.id]
+//     );
+
+//     if (existing.rows.length) {
+//       return res.status(400).json({ error: "Already paid" });
+//     }
+
+//     // 🔥 create intent
+//     const intent = await createPaymentIntent({
+//       ...bill,
+//       total: amount,
+//     });
+
+//     // 🔐 store locked amount
+//     await db.query(
+//       `INSERT INTO payments
+//      (bill_id, receipt_no, amount, tip, currency, status, provider, intent_id)
+//      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+//       [
+//         bill.id,
+//         billId,
+//         amount,
+//         tip,
+//         currency,
+//         "PENDING",
+//         "AIRWALLEX",
+//         intent.id
+//       ]
+//     );
+
+//     res.json({
+//       intent_id: intent.id,
+//       client_secret: intent.client_secret,
+//       currency
+//     });
+//   } catch (err) {
+//     console.error("❌ createPayment error:", err);
+//     res.status(500).json({ error: "Payment failed" });
+//   }
+// };
 export const createPayment = async (req, res) => {
   try {
-    const { billId, amount, tip, currency } = req.body;
+    const {
+      billId,
+      tip = 0,
+      currency,
+    } = req.body;
 
-    // 🔐 fetch bill from DB
+    console.log("💳 CREATE PAYMENT REQUEST:", {
+      billId,
+      tip,
+      currency,
+    });
+
+    // ---------------------------------------------------------
+    // 1. Find the synced bill
+    // ---------------------------------------------------------
+
     const billRes = await db.query(
-      "SELECT * FROM bills WHERE receipt_no=$1",
+      `
+      SELECT *
+      FROM bills
+      WHERE receipt_no = $1
+      LIMIT 1
+      `,
       [billId]
     );
 
     const bill = billRes.rows[0];
-    if (!bill) return res.status(404).json({ error: "Bill not found" });
 
-    // 🔐 validate amount (IMPORTANT)
-    if (Number(amount) <= 0) {
-      return res.status(400).json({ error: "Invalid amount" });
+    if (!bill) {
+      return res.status(404).json({
+        error: "Bill not found",
+      });
     }
 
-    // 🔐 prevent duplicate paid
+    console.log("🧾 DB BILL:", bill);
+
+    // ---------------------------------------------------------
+    // 2. Check whether bill is already paid
+    // ---------------------------------------------------------
+
     const existing = await db.query(
-      "SELECT * FROM payments WHERE bill_id=$1 AND status='PAID'",
+      `
+      SELECT *
+      FROM payments
+      WHERE bill_id = $1
+      AND status = 'PAID'
+      LIMIT 1
+      `,
       [bill.id]
     );
 
     if (existing.rows.length) {
-      return res.status(400).json({ error: "Already paid" });
+      return res.status(409).json({
+        error: "Bill already paid",
+        code: "BILL_ALREADY_PAID",
+        receipt_no: bill.receipt_no,
+      });
     }
 
-    // 🔥 create intent
-    const intent = await createPaymentIntent({
-      ...bill,
-      total: amount,
+    // ---------------------------------------------------------
+    // 3. Calculate payment amount
+    //
+    // bill.total = Raptor outstanding balance
+    //
+    // Example:
+    // balance = 3.40
+    // tip     = 0.30
+    // payment = 3.70
+    // ---------------------------------------------------------
+
+    const billBalance = Number(bill.total || 0);
+    const tipAmount = Number(tip || 0);
+
+    if (billBalance <= 0) {
+      return res.status(400).json({
+        error: "Invalid bill balance",
+      });
+    }
+
+    if (tipAmount < 0) {
+      return res.status(400).json({
+        error: "Invalid tip",
+      });
+    }
+
+    const totalAmount = Number(
+      (billBalance + tipAmount).toFixed(2)
+    );
+
+    console.log("💰 PAYMENT CALCULATION:", {
+      billBalance,
+      tipAmount,
+      totalAmount,
     });
 
-    // 🔐 store locked amount
+    // ---------------------------------------------------------
+    // 4. Create Airwallex Payment Intent
+    // ---------------------------------------------------------
+
+    const intent = await createPaymentIntent(
+      {
+        ...bill,
+
+        // IMPORTANT:
+        // Airwallex must receive balance + tip
+        total: totalAmount,
+
+        currency: currency || bill.currency,
+      },
+      tipAmount
+    );
+
+    console.log("✅ AIRWALLEX INTENT:", intent.id);
+
+    // ---------------------------------------------------------
+    // 5. Save PENDING payment
+    // ---------------------------------------------------------
+
     await db.query(
-      `INSERT INTO payments
-     (bill_id, receipt_no, amount, tip, currency, status, provider, intent_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        bill.id,
-        billId,
+      `
+      INSERT INTO payments
+      (
+        bill_id,
+        receipt_no,
         amount,
         tip,
         currency,
+        status,
+        provider,
+        intent_id
+      )
+      VALUES
+      ($1,$2,$3,$4,$5,$6,$7,$8)
+      `,
+      [
+        bill.id,
+        bill.receipt_no,
+        totalAmount,
+        tipAmount,
+        currency || bill.currency,
         "PENDING",
         "AIRWALLEX",
-        intent.id
+        intent.id,
       ]
     );
 
-    res.json({
+    // ---------------------------------------------------------
+    // 6. Return PaymentIntent details to frontend
+    // ---------------------------------------------------------
+
+    return res.json({
       intent_id: intent.id,
       client_secret: intent.client_secret,
-      currency
+      currency: currency || bill.currency,
+
+      // useful for frontend debugging/display
+      amount: totalAmount,
+      bill_balance: billBalance,
+      tip: tipAmount,
     });
+
   } catch (err) {
     console.error("❌ createPayment error:", err);
-    res.status(500).json({ error: "Payment failed" });
+
+    return res.status(500).json({
+      error: "Payment failed",
+      message: err.message,
+    });
   }
 };
 
@@ -301,4 +474,33 @@ export const getPaymentStatus = async (req, res) => {
   );
 
   res.json(result.rows[0] || { status: "PENDING" });
+};
+
+export const getEReceipt = async (req, res) => {
+  try {
+    const { receiptNo } = req.params;
+
+    if (!receiptNo) {
+      return res.status(400).json({
+        error: "Receipt number is required",
+      });
+    }
+
+    console.log("🧾 Getting Raptor E-Receipt:", receiptNo);
+
+    const result = await getRaptorEReceipt(receiptNo);
+
+    return res.json({
+      success: true,
+      receiptNo,
+      url: result.url,
+    });
+
+  } catch (error) {
+    console.error("❌ E-Receipt error:", error);
+
+    return res.status(500).json({
+      error: error.message || "Failed to retrieve E-Receipt",
+    });
+  }
 };
