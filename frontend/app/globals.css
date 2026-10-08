@@ -24,3 +24,914 @@ body {
   color: var(--foreground);
   font-family: 'Inter', sans-serif;
 }
+
+/* =========================================
+   NO OUTSTANDING BILL
+   ========================================= */
+
+   .no-bill-page {
+    min-height: 100vh;
+    width: 100%;
+  
+    background: #f8f8f6;
+  
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  
+    padding: 32px;
+  
+    box-sizing: border-box;
+  }
+  
+  
+  /* =========================================
+     CARD
+     ========================================= */
+  
+  .no-bill-card {
+    position: relative;
+  
+    width: 520px;
+    max-width: 92vw;
+  
+    background: #ffffff;
+  
+    border-radius: 26px;
+  
+    padding: 58px 52px 48px;
+  
+    box-sizing: border-box;
+  
+    text-align: center;
+  
+    box-shadow:
+      0 24px 60px rgba(20, 20, 20, 0.08),
+      0 5px 18px rgba(20, 20, 20, 0.04);
+  
+    overflow: hidden;
+  
+    animation: noBillCardIn 0.65s cubic-bezier(0.22, 1, 0.36, 1)
+      both;
+  }
+  
+  
+  /* Top accent */
+  
+  .no-bill-accent {
+    position: absolute;
+  
+    top: 0;
+    left: 0;
+  
+    width: 100%;
+    height: 5px;
+  
+    background: #151515;
+  }
+  
+  
+  /* =========================================
+     ICON
+     ========================================= */
+  
+  .no-bill-icon-wrapper {
+    position: relative;
+  
+    width: 92px;
+    height: 92px;
+  
+    margin: 0 auto 30px;
+  
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  
+  .no-bill-icon-pulse {
+    position: absolute;
+  
+    width: 92px;
+    height: 92px;
+  
+    border-radius: 50%;
+  
+    background: rgba(30, 41, 59, 0.06);
+  
+    animation: noBillPulse 2.8s ease-out infinite;
+  }
+  
+  
+  .no-bill-icon {
+    position: relative;
+    z-index: 2;
+  
+    width: 68px;
+    height: 68px;
+  
+    border-radius: 50%;
+  
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  
+    color: #334155;
+  
+    background: #f1f3f5;
+  
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.035);
+  
+    animation:
+      noBillIconIn 0.7s 0.15s
+      cubic-bezier(0.22, 1, 0.36, 1)
+      both;
+  }
+  
+  
+  /* =========================================
+     HEADING
+     ========================================= */
+  
+  .no-bill-content h1 {
+    margin: 0;
+  
+    color: #111111;
+  
+    font-size: 28px;
+    line-height: 1.25;
+  
+    font-weight: 600;
+  
+    letter-spacing: -0.025em;
+  
+    animation: noBillTextIn 0.55s 0.18s ease-out both;
+  }
+  
+  
+  .no-bill-description {
+    margin: 14px 0 0;
+  
+    color: #737986;
+  
+    font-size: 16px;
+    line-height: 1.65;
+  
+    font-weight: 400;
+  
+    animation: noBillTextIn 0.55s 0.25s ease-out both;
+  }
+  
+  
+  /* =========================================
+     TABLE
+     ========================================= */
+  
+  .no-bill-table {
+    margin-top: 34px;
+  
+    width: 100%;
+  
+    padding: 19px 24px;
+  
+    box-sizing: border-box;
+  
+    background: #fafafa;
+  
+    border: 1px solid #eeeeee;
+  
+    border-radius: 15px;
+  
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+  
+  
+  .no-bill-table:hover {
+    transform: translateY(-2px);
+  
+    box-shadow:
+      0 8px 22px rgba(0, 0, 0, 0.05);
+  }
+  
+  
+  .no-bill-table-label {
+    color: #999fa9;
+  
+    font-size: 11px;
+    line-height: 1;
+  
+    font-weight: 600;
+  
+    letter-spacing: 0.18em;
+  }
+  
+  
+  .no-bill-table-number {
+    margin-top: 8px;
+  
+    color: #20242a;
+  
+    font-size: 22px;
+  
+    font-weight: 600;
+  
+    letter-spacing: -0.01em;
+  }
+  
+  
+  /* =========================================
+     INFORMATION
+     ========================================= */
+  
+  .no-bill-info {
+    margin: 30px 0 0;
+  
+    color: #858b98;
+  
+    font-size: 15px;
+    line-height: 1.65;
+  
+    font-weight: 400;
+  
+    animation: noBillTextIn 0.55s 0.32s ease-out both;
+  }
+  
+  
+  /* =========================================
+     DIVIDER
+     ========================================= */
+  
+  .no-bill-divider {
+    width: 100%;
+  
+    height: 1px;
+  
+    margin: 28px 0 24px;
+  
+    background: #eeeeee;
+  }
+  
+  
+  /* =========================================
+     HELP
+     ========================================= */
+  
+  .no-bill-help {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  
+  .no-bill-help-label {
+    color: #999fa9;
+  
+    font-size: 13px;
+  
+    line-height: 1.4;
+  
+    font-weight: 400;
+  }
+  
+  
+  .no-bill-help-text {
+    margin-top: 6px;
+  
+    color: #20242a;
+  
+    font-size: 15px;
+  
+    line-height: 1.4;
+  
+    font-weight: 500;
+  }
+  
+  
+  /* =========================================
+     BRAND
+     ========================================= */
+  
+  .no-bill-brand {
+    margin-top: 26px;
+  
+    color: #999fa9;
+  
+    font-size: 13px;
+  
+    font-weight: 400;
+  
+    letter-spacing: 0.02em;
+  
+    animation: noBillBrandIn 0.7s 0.45s ease-out both;
+  }
+  
+  
+  /* =========================================
+     ANIMATIONS
+     ========================================= */
+  
+  @keyframes noBillCardIn {
+    from {
+      opacity: 0;
+      transform: translateY(24px) scale(0.97);
+    }
+  
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  
+  
+  @keyframes noBillIconIn {
+    from {
+      opacity: 0;
+      transform: scale(0.65) rotate(-8deg);
+    }
+  
+    to {
+      opacity: 1;
+      transform: scale(1) rotate(0);
+    }
+  }
+  
+  
+  @keyframes noBillPulse {
+    0% {
+      transform: scale(0.82);
+      opacity: 0.55;
+    }
+  
+    55% {
+      transform: scale(1.15);
+      opacity: 0;
+    }
+  
+    100% {
+      transform: scale(1.15);
+      opacity: 0;
+    }
+  }
+  
+  
+  @keyframes noBillTextIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  
+  @keyframes noBillBrandIn {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+  
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  
+  /* =========================================
+     MOBILE
+     ========================================= */
+  
+  @media (max-width: 600px) {
+  
+    .no-bill-page {
+      padding: 20px;
+    }
+  
+    .no-bill-card {
+      width: 100%;
+  
+      max-width: 480px;
+  
+      padding: 48px 28px 38px;
+  
+      border-radius: 23px;
+    }
+  
+    .no-bill-content h1 {
+      font-size: 24px;
+    }
+  
+    .no-bill-description {
+      font-size: 15px;
+    }
+  
+    .no-bill-info {
+      font-size: 14px;
+    }
+  
+    .no-bill-help-text {
+      font-size: 14px;
+    }
+  }
+  
+  /* =========================================
+   NO ITEMS PAGE
+   ========================================= */
+
+.no-items-page {
+  min-height: 100vh;
+  width: 100%;
+
+  background: #f8f8f6;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 32px;
+
+  box-sizing: border-box;
+}
+
+
+/* =========================================
+   CARD
+   ========================================= */
+
+.no-items-card {
+  position: relative;
+
+  width: 520px;
+  max-width: 92vw;
+
+  background: #ffffff;
+
+  border-radius: 26px;
+
+  padding: 58px 52px 48px;
+
+  box-sizing: border-box;
+
+  text-align: center;
+
+  box-shadow:
+    0 24px 60px rgba(20, 20, 20, 0.08),
+    0 5px 18px rgba(20, 20, 20, 0.04);
+
+  overflow: hidden;
+
+  animation: noItemsCardIn 0.65s
+    cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+
+/* =========================================
+   TOP ACCENT
+   ========================================= */
+
+.no-items-accent {
+  position: absolute;
+
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 5px;
+
+  background: #151515;
+}
+
+
+/* =========================================
+   ICON
+   ========================================= */
+
+.no-items-icon-wrapper {
+  position: relative;
+
+  width: 92px;
+  height: 92px;
+
+  margin: 0 auto 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+.no-items-icon-pulse {
+  position: absolute;
+
+  width: 92px;
+  height: 92px;
+
+  border-radius: 50%;
+
+  background: rgba(30, 41, 59, 0.055);
+
+  animation: noItemsPulse 2.8s
+    ease-out infinite;
+}
+
+
+.no-items-icon {
+  position: relative;
+
+  z-index: 2;
+
+  width: 68px;
+  height: 68px;
+
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #475569;
+
+  background: #f1f3f5;
+
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.035);
+
+  animation: noItemsIconIn 0.7s 0.15s
+    cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+
+/* =========================================
+   HEADING
+   ========================================= */
+
+.no-items-content h1 {
+  margin: 0;
+
+  color: #111111;
+
+  font-size: 28px;
+
+  line-height: 1.25;
+
+  font-weight: 600;
+
+  letter-spacing: -0.025em;
+
+  animation: noItemsTextIn 0.55s 0.18s
+    ease-out both;
+}
+
+
+.no-items-description {
+  margin: 14px 0 0;
+
+  color: #737986;
+
+  font-size: 16px;
+
+  line-height: 1.65;
+
+  font-weight: 400;
+
+  animation: noItemsTextIn 0.55s 0.25s
+    ease-out both;
+}
+
+
+/* =========================================
+   TABLE
+   ========================================= */
+
+.no-items-table {
+  margin-top: 34px;
+
+  width: 100%;
+
+  padding: 19px 24px;
+
+  box-sizing: border-box;
+
+  background: #fafafa;
+
+  border: 1px solid #eeeeee;
+
+  border-radius: 15px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+
+.no-items-table-label {
+  color: #999fa9;
+
+  font-size: 11px;
+
+  line-height: 1;
+
+  font-weight: 600;
+
+  letter-spacing: 0.18em;
+}
+
+
+.no-items-table-number {
+  margin-top: 8px;
+
+  color: #20242a;
+
+  font-size: 22px;
+
+  font-weight: 600;
+}
+
+
+/* =========================================
+   MESSAGE
+   ========================================= */
+
+.no-items-message {
+  margin-top: 29px;
+
+  animation: noItemsTextIn 0.55s 0.32s
+    ease-out both;
+}
+
+
+.no-items-message p {
+  margin: 0;
+
+  color: #3f4650;
+
+  font-size: 15px;
+
+  line-height: 1.5;
+
+  font-weight: 500;
+}
+
+
+.no-items-message span {
+  display: block;
+
+  margin-top: 7px;
+
+  color: #858b98;
+
+  font-size: 13px;
+
+  line-height: 1.6;
+
+  font-weight: 400;
+}
+
+
+/* =========================================
+   DIVIDER
+   ========================================= */
+
+.no-items-divider {
+  width: 100%;
+
+  height: 1px;
+
+  margin: 28px 0 24px;
+
+  background: #eeeeee;
+}
+
+
+/* =========================================
+   HELP
+   ========================================= */
+
+.no-items-help {
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+}
+
+
+.no-items-help-label {
+  color: #999fa9;
+
+  font-size: 13px;
+
+  line-height: 1.4;
+}
+
+
+.no-items-help-text {
+  margin-top: 6px;
+
+  color: #20242a;
+
+  font-size: 15px;
+
+  line-height: 1.4;
+
+  font-weight: 500;
+}
+
+
+/* =========================================
+   BRAND
+   ========================================= */
+
+.no-items-brand {
+  margin-top: 26px;
+
+  color: #999fa9;
+
+  font-size: 13px;
+
+  font-weight: 400;
+
+  letter-spacing: 0.02em;
+
+  animation: noItemsBrandIn 0.7s 0.45s
+    ease-out both;
+}
+
+
+/* =========================================
+   ANIMATIONS
+   ========================================= */
+
+@keyframes noItemsCardIn {
+  from {
+    opacity: 0;
+
+    transform:
+      translateY(24px)
+      scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+
+@keyframes noItemsIconIn {
+  from {
+    opacity: 0;
+
+    transform:
+      scale(0.65)
+      rotate(-8deg);
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      scale(1)
+      rotate(0);
+  }
+}
+
+
+@keyframes noItemsPulse {
+  0% {
+    transform: scale(0.82);
+
+    opacity: 0.55;
+  }
+
+  55% {
+    transform: scale(1.15);
+
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1.15);
+
+    opacity: 0;
+  }
+}
+
+
+@keyframes noItemsTextIn {
+  from {
+    opacity: 0;
+
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0);
+  }
+}
+
+
+@keyframes noItemsBrandIn {
+  from {
+    opacity: 0;
+
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0);
+  }
+}
+
+
+/* =========================================
+   MOBILE
+   ========================================= */
+
+@media (max-width: 600px) {
+
+  .no-items-page {
+    padding: 20px;
+  }
+
+  .no-items-card {
+    width: 100%;
+
+    max-width: 480px;
+
+    padding: 48px 28px 38px;
+
+    border-radius: 23px;
+  }
+
+  .no-items-content h1 {
+    font-size: 24px;
+  }
+
+  .no-items-description {
+    font-size: 15px;
+  }
+
+  .no-items-message p {
+    font-size: 14px;
+  }
+
+  .no-items-help-text {
+    font-size: 14px;
+  }
+}
+
+
+/* =========================================
+   ACCESSIBILITY
+   ========================================= */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .no-items-card,
+  .no-items-icon,
+  .no-items-icon-pulse,
+  .no-items-content h1,
+  .no-items-description,
+  .no-items-message,
+  .no-items-brand {
+    animation: none;
+  }
+}
+  /* =========================================
+     REDUCE MOTION
+     ========================================= */
+  
+  @media (prefers-reduced-motion: reduce) {
+  
+    .no-bill-card,
+    .no-bill-icon,
+    .no-bill-icon-pulse,
+    .no-bill-content h1,
+    .no-bill-description,
+    .no-bill-info,
+    .no-bill-brand {
+      animation: none;
+    }
+  }

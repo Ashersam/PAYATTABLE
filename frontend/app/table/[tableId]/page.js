@@ -36,6 +36,8 @@ export default function Page() {
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [isPaid, setIsPaid] = useState(false);
   const [noBill, setNoBill] = useState(false);
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
+  const [noItems, setNoItems] = useState(false);
 
   const symbol = getSymbol(currency);
 
@@ -44,21 +46,58 @@ export default function Page() {
     if (params?.tableId) {
       getBill(params.tableId)
         .then((data) => {
-          console.log(data)
-          setBill(data);
+          console.log("Bill response:", data);
+
+          // Reset states
           setNoBill(false);
+          setAlreadyPaid(false);
+          setNoItems(false);
+
+          // --------------------------------
+          // NO ACTIVE BILL
+          // --------------------------------
           if (data?.error === "No active bill") {
             setBill(null);
             setNoBill(true);
+            return;
           }
+
+          // --------------------------------
+          // ALREADY PAID
+          // --------------------------------
           if (data?.error === "Bill already paid") {
-            setIsPaid(true);
+            setBill(null);
+            setAlreadyPaid(true);
+            return;
           }
+
           if (data?.status === "PAID") {
-            setIsPaid(true);
+            setBill(null);
+            setAlreadyPaid(true);
+            return;
           }
+
+          // --------------------------------
+          // BILL EXISTS BUT NO ITEMS
+          // --------------------------------
+          if (
+            data &&
+            Array.isArray(data.items) &&
+            data.items.length === 0
+          ) {
+            setBill(null);
+            setNoItems(true);
+            return;
+          }
+
+          // --------------------------------
+          // BILL WITH ITEMS
+          // --------------------------------
+          setBill(data);
         })
-        .catch(() => {
+        .catch((error) => {
+          console.error("Failed to load bill:", error);
+
           setBill(null);
           setNoBill(true);
         });
@@ -121,41 +160,6 @@ export default function Page() {
     }
   }, [showFinalSuccess, bill]);
 
-  // const handlePay = async () => {
-  //   try {
-  //     setProcessing(true);
-
-  //     const res = await createPayment({
-  //       billId: bill.receipt_no,
-  //       tip: Number(tip || 0),
-  //       currency: bill.currency,
-  //     });
-
-  //     console.log("💳 CREATE PAYMENT RESPONSE:", res);
-
-  //     if (res?.error) {
-  //       console.error("❌ Payment creation failed:", res.error);
-
-  //       setProcessing(false);
-
-  //       if (
-  //         res.error === "Bill already paid"
-  //       ) {
-  //         setIsPaid(true);
-  //       }
-
-  //       return;
-  //     }
-
-  //     setIntentId(res.intent_id);
-  //     setClientSecret(res.client_secret);
-  //     setCurrency(res.currency);
-
-  //   } catch (err) {
-  //     console.error("❌ Payment error:", err);
-  //     setProcessing(false);
-  //   }
-  // };
 
   const handlePay = async () => {
     try {
@@ -165,18 +169,12 @@ export default function Page() {
         (payableAmount + Number(tip || 0)).toFixed(2)
       );
 
-      console.log("💰 PAYMENT AMOUNT:", paymentAmount);
-      console.log("🧾 RECEIPT:", bill.receipt_no);
-      console.log("💵 TIP:", tip);
-
       const res = await createPayment({
         billId: bill.receipt_no,
         amount: paymentAmount,
         tip: Number(tip || 0),
         currency: bill.currency,
       });
-
-      console.log("💳 CREATE PAYMENT RESPONSE:", res);
 
       if (!res || res.error) {
         console.error("❌ Payment creation failed:", res);
@@ -194,15 +192,308 @@ export default function Page() {
     }
   };
 
+  /* =========================================
+   NO ITEMS UI
+   ========================================= */
+
+if (noItems) {
+  return (
+    <div className="no-items-page">
+
+      <div className="no-items-card">
+
+        {/* Top accent */}
+        <div className="no-items-accent" />
+
+        {/* Animated icon */}
+        <div className="no-items-icon-wrapper">
+
+          <div className="no-items-icon-pulse" />
+
+          <div className="no-items-icon">
+            <svg
+              width="34"
+              height="34"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Plate */}
+              <circle
+                cx="12"
+                cy="12"
+                r="8.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+
+              {/* Fork / plate detail */}
+              <path
+                d="M8.5 8.5V12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+
+              <path
+                d="M10 8.5V12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+
+              <path
+                d="M9.25 12V15.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+
+              <path
+                d="M15.5 8.5V15.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+
+              <path
+                d="M15.5 8.5C14.4 9.2 14.2 10.8 15.5 11.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+        </div>
+
+        {/* Heading */}
+        <div className="no-items-content">
+
+          <h1>
+            No Items Found
+          </h1>
+
+          <p className="no-items-description">
+            There are currently no items
+            <br />
+            added to this table.
+          </p>
+
+        </div>
+
+        {/* Table */}
+        <div className="no-items-table">
+
+          <span className="no-items-table-label">
+            TABLE
+          </span>
+
+          <span className="no-items-table-number">
+            {params.tableId}
+          </span>
+
+        </div>
+
+        {/* Main message */}
+        <div className="no-items-message">
+
+          <p>
+            Please place an order to continue.
+          </p>
+
+          <span>
+            Once items are added to your table,
+            <br />
+            your bill will appear here.
+          </span>
+
+        </div>
+
+        {/* Divider */}
+        <div className="no-items-divider" />
+
+        {/* Help */}
+        <div className="no-items-help">
+
+          <span className="no-items-help-label">
+            Need assistance?
+          </span>
+
+          <span className="no-items-help-text">
+            Please ask our staff for help.
+          </span>
+
+        </div>
+
+      </div>
+
+      {/* Footer */}
+      <div className="no-items-brand">
+        Scan to Pay
+      </div>
+
+    </div>
+  );
+}
   // ✅ 1. NO BILL UI
   if (noBill) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="bg-white p-6 rounded-xl shadow text-center">
-          <h2 className="text-lg font-semibold">No Active Bill</h2>
-          <p className="text-gray-500 mt-2">
-            Table {params.tableId} has no open bill
+      <div className="no-bill-page">
+        <div className="no-bill-card">
+
+          {/* Top accent */}
+          <div className="no-bill-accent" />
+
+          {/* Animated icon */}
+          <div className="no-bill-icon-wrapper">
+            <div className="no-bill-icon-pulse" />
+
+            <div className="no-bill-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8.5"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                />
+
+                <path
+                  d="M8.8 12.2L10.8 14.2L15.4 9.8"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          </div>
+
+          {/* Heading */}
+          <div className="no-bill-content">
+            <h1>No Outstanding Bill</h1>
+
+            <p className="no-bill-description">
+              There is currently no unpaid bill
+              <br />
+              for this table.
+            </p>
+          </div>
+
+          {/* Table information */}
+          <div className="no-bill-table">
+            <span className="no-bill-table-label">
+              TABLE
+            </span>
+
+            <span className="no-bill-table-number">
+              {params.tableId}
+            </span>
+          </div>
+
+          {/* Information */}
+          <p className="no-bill-info">
+            If you have just placed an order,
+            <br />
+            please wait a moment and try again.
           </p>
+
+          {/* Divider */}
+          <div className="no-bill-divider" />
+
+          {/* Assistance */}
+          <div className="no-bill-help">
+            <span className="no-bill-help-label">
+              Need assistance?
+            </span>
+
+            <span className="no-bill-help-text">
+              Please ask our staff for help.
+            </span>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="no-bill-brand">
+          Scan to Pay
+        </div>
+      </div>
+    );
+  }
+
+  if (alreadyPaid) {
+    return (
+      <div className="min-h-screen bg-[#f7f7f5] flex items-center justify-center px-5">
+        <div className="w-full max-w-md">
+
+          <div className="bg-white rounded-[28px] shadow-[0_12px_45px_rgba(0,0,0,0.08)] border border-gray-100 overflow-hidden">
+
+            <div className="h-1.5 bg-black" />
+
+            <div className="px-7 py-10 text-center">
+
+              {/* Success Icon */}
+              <div className="mx-auto mb-6 w-16 h-16 rounded-full bg-[#f1f8f3] flex items-center justify-center">
+                <svg
+                  width="30"
+                  height="30"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="text-green-600"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m7 12 3.2 3.2L17 8.5"
+                  />
+                </svg>
+              </div>
+
+              <h1 className="text-[24px] font-semibold tracking-[-0.02em] text-gray-900">
+                Payment Already Completed
+              </h1>
+
+              <p className="mt-3 text-[15px] leading-6 text-gray-500">
+                This bill has already been paid.
+                <br />
+                No further payment is required.
+              </p>
+
+              <div className="mt-7 py-4 px-4 rounded-xl bg-gray-50 border border-gray-100">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-gray-400">
+                  Table
+                </p>
+
+                <p className="mt-1 text-base font-semibold text-gray-800">
+                  {params.tableId}
+                </p>
+              </div>
+
+              <div className="mt-7 pt-5 border-t border-gray-100">
+                <p className="text-sm text-gray-500">
+                  Thank you for dining with us.
+                </p>
+
+                <p className="mt-1 text-sm font-medium text-gray-700">
+                  We hope you enjoyed your meal.
+                </p>
+              </div>
+
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-gray-400 mt-6">
+            Scan to Pay
+          </p>
+
         </div>
       </div>
     );

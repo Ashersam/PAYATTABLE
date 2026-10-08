@@ -184,7 +184,7 @@ export const mapRaptorBill = (data) => {
 
     status: Number(heldTable.balance || 0) > 0
       ? "OPEN"
-      : "PAID",
+      : "OPEN",
 
     items,
 
