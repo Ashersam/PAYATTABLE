@@ -225,9 +225,6 @@ export const doRaptorPayment = async ({
     customerid: customerId || "",
   };
 
-  console.log("💳 RAPTOR DOPAYMENT REQUEST:");
-  console.log(JSON.stringify(payload, null, 2));
-
   const response = await fetch(
     `${config.outlet_api_url}/payment/dopayment`,
     {
@@ -241,9 +238,6 @@ export const doRaptorPayment = async ({
   );
 
   const text = await response.text();
-
-  console.log("💳 RAPTOR DOPAYMENT RESPONSE:");
-  console.log(text);
 
   if (!response.ok) {
     throw new Error(
@@ -296,9 +290,6 @@ export const getRaptorEReceipt = async (receiptNo) => {
     receiptno: String(receiptNo),
   };
 
-  console.log("🧾 RAPTOR E-RECEIPT REQUEST:");
-  console.log(JSON.stringify(payload, null, 2));
-
   const response = await fetch(
     `${config.outlet_api_url}/info/E-receipt`,
     {
@@ -312,9 +303,6 @@ export const getRaptorEReceipt = async (receiptNo) => {
   );
 
   const text = await response.text();
-
-  console.log("🧾 RAPTOR E-RECEIPT RESPONSE:");
-  console.log(text);
 
   if (!response.ok) {
     throw new Error(

@@ -42,8 +42,6 @@ export const createPaymentIntent = async (bill, tip) => {
     },
   };
 
-  console.log("🔥 AIRWALLEX PAYLOAD:", payload);
-
   const res = await axios.post(
     `${process.env.AIRWALLEX_BASE_URL}/api/v1/pa/payment_intents/create`,
     payload,

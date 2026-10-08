@@ -34,21 +34,13 @@ export const handleWebhook = async (req, res) => {
 export const handlePaymentSuccess = async (req, res) => {
   try {
     console.log("🔥 WEBHOOK HIT");
-
     const event = Buffer.isBuffer(req.body)
       ? JSON.parse(req.body.toString("utf8"))
       : req.body;
 
-    console.log(JSON.stringify(event, null, 2));
-
-    console.log("EVENT NAME:", event.name);
-    console.log("INTENT:", event.data.object.id);
 
     const eventId = event.id;
     const intentId = event.data.object.id;
-
-    console.log("EVENT ID :", event.id);
-    console.log("INTENT ID:", event.data.object.id);
 
     // 🔐 idempotency check
     const exists = await db.query(
@@ -72,11 +64,8 @@ export const handlePaymentSuccess = async (req, res) => {
       [intentId]
     );
 
-    console.log(paymentRes.rows);
-
     const payment = paymentRes.rows[0];
     if (!payment) return res.sendStatus(200);
-    console.log("🔥 PAYMENT FOUND", payment);
 
     // 🔐 idempotent
     if (payment.status === "PAID") return res.sendStatus(200);
@@ -105,9 +94,6 @@ export const handlePaymentSuccess = async (req, res) => {
       return res.status(500).send("Bill not found");
     }
 
-    console.log("🧾 BILL FOR RAPTOR PAYMENT:");
-    console.log(JSON.stringify(bill, null, 2));
-
     const raptorResult = await doRaptorPayment({
       tableNo: bill.table_id,
       salesNo: bill.salesno,
@@ -116,9 +102,6 @@ export const handlePaymentSuccess = async (req, res) => {
       paidAmount: Number(payment.amount),
       customerId: "",
     });
-
-    console.log("✅ RAPTOR PAYMENT SUCCESS:");
-    console.log(JSON.stringify(raptorResult, null, 2));
 
     // ✅ mark PAID
     await db.query(

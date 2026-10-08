@@ -29,6 +29,617 @@ body {
    NO OUTSTANDING BILL
    ========================================= */
 
+   /* =========================================
+   PAY AT TABLE - HOME
+   ========================================= */
+
+.paytable-home {
+  position: relative;
+
+  min-height: 100vh;
+  width: 100%;
+
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      circle at 50% 38%,
+      #ffffff 0%,
+      #fafaf8 42%,
+      #f5f5f2 100%
+    );
+
+  color: #111111;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  box-sizing: border-box;
+
+  padding: 42px 24px 26px;
+}
+
+
+/* =========================================
+   BACKGROUND
+   ========================================= */
+
+.paytable-glow {
+  position: absolute;
+
+  border-radius: 50%;
+
+  pointer-events: none;
+
+  filter: blur(1px);
+}
+
+
+.paytable-glow-one {
+  width: 420px;
+  height: 420px;
+
+  top: -220px;
+  left: -180px;
+
+  background: rgba(255, 255, 255, 0.7);
+}
+
+
+.paytable-glow-two {
+  width: 380px;
+  height: 380px;
+
+  right: -180px;
+  bottom: -180px;
+
+  background: rgba(235, 235, 230, 0.5);
+}
+
+
+/* =========================================
+   HERO
+   ========================================= */
+
+.paytable-hero {
+  position: relative;
+
+  z-index: 2;
+
+  width: 100%;
+  max-width: 620px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  text-align: center;
+}
+
+
+/* =========================================
+   BRAND
+   ========================================= */
+
+.paytable-brand {
+  display: inline-flex;
+
+  align-items: center;
+  gap: 10px;
+
+  color: #171717;
+
+  font-size: 16px;
+  font-weight: 600;
+
+  letter-spacing: -0.01em;
+
+  animation:
+    paytableFadeDown
+    0.6s
+    ease-out
+    both;
+}
+
+
+.paytable-brand-mark {
+  width: 36px;
+  height: 36px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #ffffff;
+
+  background: #161616;
+
+  border-radius: 10px;
+
+  box-shadow:
+    0 5px 14px rgba(0, 0, 0, 0.12);
+}
+
+
+/* =========================================
+   HEADING
+   ========================================= */
+
+.paytable-heading {
+  margin-top: 72px;
+
+  animation:
+    paytableFadeUp
+    0.7s
+    0.08s
+    ease-out
+    both;
+}
+
+
+.paytable-eyebrow {
+  color: #929292;
+
+  font-size: 10px;
+
+  font-weight: 600;
+
+  letter-spacing: 0.2em;
+}
+
+
+.paytable-heading h1 {
+  margin: 17px 0 0;
+
+  color: #111111;
+
+  font-size: clamp(54px, 8vw, 76px);
+
+  line-height: 0.98;
+
+  font-weight: 600;
+
+  letter-spacing: -0.065em;
+}
+
+
+.paytable-heading h1 span {
+  color: #858585;
+}
+
+
+.paytable-heading p {
+  margin: 26px 0 0;
+
+  color: #777b82;
+
+  font-size: 16px;
+
+  line-height: 1.7;
+
+  font-weight: 400;
+}
+
+
+/* =========================================
+   PAYMENT VISUAL
+   ========================================= */
+
+.paytable-payment-visual {
+  position: relative;
+
+  width: 250px;
+  height: 170px;
+
+  margin-top: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  animation:
+    paytableFadeUp
+    0.8s
+    0.2s
+    ease-out
+    both;
+}
+
+
+/* Rings */
+
+.paytable-ring {
+  position: absolute;
+
+  border: 1px solid rgba(0, 0, 0, 0.055);
+
+  border-radius: 50%;
+}
+
+
+.paytable-ring-one {
+  width: 180px;
+  height: 180px;
+
+  animation:
+    paytableRingPulse
+    3.5s
+    ease-in-out
+    infinite;
+}
+
+
+.paytable-ring-two {
+  width: 230px;
+  height: 230px;
+
+  opacity: 0.5;
+
+  animation:
+    paytableRingPulse
+    3.5s
+    0.7s
+    ease-in-out
+    infinite;
+}
+
+
+/* Card */
+
+.paytable-payment-card {
+  position: relative;
+
+  z-index: 2;
+
+  width: 190px;
+
+  padding: 25px 22px 22px;
+
+  box-sizing: border-box;
+
+  background: rgba(255, 255, 255, 0.95);
+
+  border: 1px solid rgba(0, 0, 0, 0.06);
+
+  border-radius: 18px;
+
+  box-shadow:
+    0 20px 45px rgba(0, 0, 0, 0.08),
+    0 3px 10px rgba(0, 0, 0, 0.04);
+
+  backdrop-filter: blur(8px);
+
+  animation:
+    paytableCardFloat
+    4s
+    ease-in-out
+    infinite;
+}
+
+
+.paytable-check {
+  width: 62px;
+  height: 62px;
+
+  margin: 0 auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #3e4b45;
+
+  background: #f0f3f1;
+
+  border-radius: 50%;
+}
+
+
+.paytable-payment-title {
+  margin-top: 14px;
+
+  color: #202020;
+
+  font-size: 14px;
+
+  font-weight: 600;
+}
+
+
+.paytable-payment-subtitle {
+  margin-top: 4px;
+
+  color: #999da2;
+
+  font-size: 11px;
+}
+
+
+/* =========================================
+   INSTRUCTION
+   ========================================= */
+
+.paytable-instruction {
+  width: 100%;
+
+  max-width: 440px;
+
+  margin-top: 26px;
+
+  padding: 17px 20px;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 15px;
+
+  box-sizing: border-box;
+
+  text-align: left;
+
+  background: rgba(255, 255, 255, 0.7);
+
+  border: 1px solid rgba(0, 0, 0, 0.055);
+
+  border-radius: 14px;
+
+  animation:
+    paytableFadeUp
+    0.7s
+    0.35s
+    ease-out
+    both;
+}
+
+
+.paytable-instruction-icon {
+  width: 42px;
+  height: 42px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #4b5563;
+
+  background: #f1f2f2;
+
+  border-radius: 11px;
+}
+
+
+.paytable-instruction strong {
+  display: block;
+
+  color: #292929;
+
+  font-size: 13px;
+
+  font-weight: 600;
+}
+
+
+.paytable-instruction span {
+  display: block;
+
+  margin-top: 4px;
+
+  color: #85898f;
+
+  font-size: 11px;
+
+  line-height: 1.5;
+}
+
+
+/* =========================================
+   FEATURES
+   ========================================= */
+
+.paytable-features {
+  margin-top: 32px;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 20px;
+
+  color: #85898f;
+
+  font-size: 11px;
+
+  animation:
+    paytableFadeUp
+    0.7s
+    0.45s
+    ease-out
+    both;
+}
+
+
+.paytable-feature {
+  display: flex;
+
+  align-items: center;
+
+  gap: 6px;
+}
+
+
+.paytable-feature-icon {
+  width: 17px;
+  height: 17px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #53635b;
+
+  background: #e9eeeb;
+
+  border-radius: 50%;
+
+  font-size: 9px;
+
+  font-weight: 700;
+}
+
+
+.paytable-feature-divider {
+  width: 1px;
+  height: 15px;
+
+  background: #dddddd;
+}
+
+
+/* =========================================
+   FOOTER
+   ========================================= */
+
+.paytable-footer {
+  position: relative;
+
+  z-index: 2;
+
+  margin-top: auto;
+  padding-top: 30px;
+
+  color: #a3a5a8;
+
+  font-size: 10px;
+
+  letter-spacing: 0.02em;
+}
+
+
+.paytable-footer-dot {
+  margin: 0 7px;
+
+  color: #c5c5c5;
+}
+
+
+/* =========================================
+   ANIMATIONS
+   ========================================= */
+
+@keyframes paytableFadeDown {
+  from {
+    opacity: 0;
+
+    transform: translateY(-12px);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0);
+  }
+}
+
+
+@keyframes paytableFadeUp {
+  from {
+    opacity: 0;
+
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0);
+  }
+}
+
+
+@keyframes paytableCardFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+
+@keyframes paytableRingPulse {
+  0%,
+  100% {
+    transform: scale(0.96);
+
+    opacity: 0.35;
+  }
+
+  50% {
+    transform: scale(1.04);
+
+    opacity: 0.7;
+  }
+}
+
+
+/* =========================================
+   MOBILE
+   ========================================= */
+
+@media (max-width: 600px) {
+
+  .paytable-home {
+    padding:
+      30px
+      20px
+      22px;
+  }
+
+
+  .paytable-heading {
+    margin-top: 55px;
+  }
+
+
+  .paytable-heading h1 {
+    font-size: 56px;
+  }
+
+
+  .paytable-heading p {
+    font-size: 14px;
+  }
+
+
+  .desktop-break {
+    display: none;
+  }
+
+
+  .paytable-payment-visual {
+    margin-top: 38px;
+  }
+
+
+  .paytable-features {
+    gap: 12px;
+
+    font-size: 10px;
+  }
+
+
+  .paytable-feature-divider {
+    height: 12px;
+  }
+}
+
+
    .no-bill-page {
     min-height: 100vh;
     width: 100%;

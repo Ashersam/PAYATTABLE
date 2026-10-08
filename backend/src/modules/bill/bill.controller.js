@@ -15,18 +15,12 @@ export const getBill = async (req, res) => {
       });
     }
 
-    console.log("🔎 Fetching Raptor bill for table:", tableId);
 
     // -------------------------------------------------------
     // 1. Get live bill from Raptor
     // -------------------------------------------------------
 
     const raptorData = await getRaptorBill(tableId);
-
-    console.log(
-      "📦 Raptor response:",
-      JSON.stringify(raptorData, null, 2)
-    );
 
     // -------------------------------------------------------
     // 2. Convert Raptor response to our common format
@@ -45,15 +39,6 @@ export const getBill = async (req, res) => {
     // -------------------------------------------------------
 
     const dbBillId = await syncRaptorBill(bill);
-
-    console.log(
-      "💾 Bill synced to PostgreSQL:",
-      {
-        dbBillId,
-        receiptNo: bill.receipt_no,
-        tableId: bill.table_id,
-      }
-    );
 
     // -------------------------------------------------------
     // 4. Return the live Raptor bill to frontend

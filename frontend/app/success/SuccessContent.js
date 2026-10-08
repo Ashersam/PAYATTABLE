@@ -41,7 +41,7 @@ export default function SuccessPage() {
        
         setLoading(false);
 
-        console.error("❌ Failed to get E-Receipt:", err);
+        // console.error("❌ Failed to get E-Receipt:", err);
 
         setError(
           err.message || "Unable to open E-Receipt"
