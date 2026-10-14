@@ -1,7 +1,7 @@
 import { getOutletConfig } from "./outletConfig.service.js";
 
-export const getRaptorToken = async () => {
-  const config = await getOutletConfig();
+export const getRaptorToken = async (outletUuid = null) => {
+  const config = await getOutletConfig(outletUuid);
 
   const body = new URLSearchParams({
     username: config.username,
@@ -78,11 +78,14 @@ export const getRaptorSalesNo = async (
   return data.salesno;
 };
 
-export const getRaptorBill = async (tableNo) => {
+export const getRaptorBill = async (
+  tableNo,
+  outletUuid = null
+) => {
   const {
     accessToken,
     config,
-  } = await getRaptorToken();
+  } = await getRaptorToken(outletUuid);
 
   const salesno = await getRaptorSalesNo(
     config,
@@ -118,7 +121,7 @@ export const getRaptorBill = async (tableNo) => {
 
   return await response.json();
 };
-export const mapRaptorBill = (data) => {
+export const mapRaptorBill = (data, outletUuid = null) => {
   const heldTable = data.held_table;
 
   if (!heldTable) {
@@ -155,6 +158,8 @@ export const mapRaptorBill = (data) => {
   }
 
   return {
+    outletuuid: outletUuid,
+
     id: heldTable.salesno,
 
     table_id: heldTable.tableno,
@@ -202,6 +207,7 @@ export const mapRaptorBill = (data) => {
 };
 
 export const doRaptorPayment = async ({
+  outletUuid = null,
   tableNo,
   salesNo,
   splitNo = 0,
@@ -212,7 +218,7 @@ export const doRaptorPayment = async ({
   const {
     accessToken,
     config,
-  } = await getRaptorToken();
+  } = await getRaptorToken(outletUuid);
 
   const payload = {
     posid: config.posid,
@@ -280,11 +286,14 @@ export const doRaptorPayment = async ({
   };
 };
 
-export const getRaptorEReceipt = async (receiptNo) => {
+export const getRaptorEReceipt = async (
+  receiptNo,
+  outletUuid = null
+) => {
   const {
     accessToken,
     config,
-  } = await getRaptorToken();
+  } = await getRaptorToken(outletUuid);
 
   const payload = {
     receiptno: String(receiptNo),

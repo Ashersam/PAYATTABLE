@@ -7,26 +7,20 @@ import { syncRaptorBill } from "../../services/billSync.service.js";
 
 export const getBill = async (req, res) => {
   try {
-    const { tableId } = req.params;
+    const { outletUuid, tableId } = req.params;
 
-    if (!tableId) {
+    if (!outletUuid || !tableId) {
       return res.status(400).json({
-        error: "Table number is required",
+        error: "Outlet UUID and table number are required",
       });
     }
 
 
-    // -------------------------------------------------------
-    // 1. Get live bill from Raptor
-    // -------------------------------------------------------
+    // 1. Fetch the bill from the selected outlet's Raptor POS.
+    const raptorData = await getRaptorBill(tableId, outletUuid);
 
-    const raptorData = await getRaptorBill(tableId);
-
-    // -------------------------------------------------------
-    // 2. Convert Raptor response to our common format
-    // -------------------------------------------------------
-
-    const bill = mapRaptorBill(raptorData);
+    // 2. Convert the Raptor response to our common bill format.
+    const bill = mapRaptorBill(raptorData, outletUuid);
 
     if (!bill) {
       return res.status(404).json({
@@ -55,11 +49,15 @@ export const getBill = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ getBill error:", err);
+    console.error("Bill fetch failed:", err);
 
-    return res.status(500).json({
-      error: "Failed to fetch bill",
-      message: err.message,
+    const statusCode = err.statusCode || 500;
+
+    return res.status(statusCode).json({
+      error:
+        statusCode === 404
+          ? "Outlet not found"
+          : "Failed to fetch bill",
     });
   }
 };

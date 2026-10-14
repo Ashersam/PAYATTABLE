@@ -8,8 +8,8 @@ import DropIn from "@/components/DropIn";
 import { getSymbol } from "@/services/helper";
 import ProcessingScreen from "@/components/ProcessingScreen";
 import SuccessAnimation from "@/components/SuccessAnimation";
-import loadingAnim from "../../../animations/loading.json";
-import Done from "../../../animations/done2.json";
+import loadingAnim from "../../../../animations/loading.json";
+import Done from "../../../../animations/done2.json";
 import Lottie from "lottie-react";
 import LoadingScreen from "@/components/LoadingScreen";
 import PaymentTransition from "@/components/PaymentTransition";
@@ -43,66 +43,71 @@ export default function Page() {
 
   // ✅ SINGLE FETCH (FIXED)
   useEffect(() => {
-    if (params?.tableId) {
-      getBill(params.tableId)
-        .then((data) => {
-          console.log("Bill response:", data);
+    const outletUuid = params?.outletUuid;
+    const tableId = params?.tableId;
 
-          // Reset states
-          setNoBill(false);
-          setAlreadyPaid(false);
-          setNoItems(false);
+    if (!outletUuid || !tableId) {
+      return;
+    }
 
-          // --------------------------------
-          // NO ACTIVE BILL
-          // --------------------------------
-          if (data?.error === "No active bill") {
-            setBill(null);
-            setNoBill(true);
-            return;
-          }
+    getBill(outletUuid, tableId)
+      .then((data) => {
+        console.log("Bill response:", data);
 
-          // --------------------------------
-          // ALREADY PAID
-          // --------------------------------
-          if (data?.error === "Bill already paid") {
-            setBill(null);
-            setAlreadyPaid(true);
-            return;
-          }
+        // Reset states
+        setNoBill(false);
+        setAlreadyPaid(false);
+        setNoItems(false);
 
-          if (data?.status === "PAID") {
-            setBill(null);
-            setAlreadyPaid(true);
-            return;
-          }
-
-          // --------------------------------
-          // BILL EXISTS BUT NO ITEMS
-          // --------------------------------
-          if (
-            data &&
-            Array.isArray(data.items) &&
-            data.items.length === 0
-          ) {
-            setBill(null);
-            setNoItems(true);
-            return;
-          }
-
-          // --------------------------------
-          // BILL WITH ITEMS
-          // --------------------------------
-          setBill(data);
-        })
-        .catch((error) => {
-          console.error("Failed to load bill:", error);
-
+        // --------------------------------
+        // NO ACTIVE BILL
+        // --------------------------------
+        if (data?.error === "No active bill") {
           setBill(null);
           setNoBill(true);
-        });
-    }
-  }, [params]);
+          return;
+        }
+
+        // --------------------------------
+        // ALREADY PAID
+        // --------------------------------
+        if (data?.error === "Bill already paid") {
+          setBill(null);
+          setAlreadyPaid(true);
+          return;
+        }
+
+        if (data?.status === "PAID") {
+          setBill(null);
+          setAlreadyPaid(true);
+          return;
+        }
+
+        // --------------------------------
+        // BILL EXISTS BUT NO ITEMS
+        // --------------------------------
+        if (
+          data &&
+          Array.isArray(data.items) &&
+          data.items.length === 0
+        ) {
+          setBill(null);
+          setNoItems(true);
+          return;
+        }
+
+        // --------------------------------
+        // BILL WITH ITEMS
+        // --------------------------------
+        setBill(data);
+      })
+      .catch((error) => {
+        console.error("Failed to load bill:", error);
+
+        setBill(null);
+        setNoBill(true);
+      });
+  }, [params?.outletUuid, params?.tableId]);
 
   useEffect(() => {
     return () => {
@@ -196,145 +201,145 @@ export default function Page() {
    NO ITEMS UI
    ========================================= */
 
-if (noItems) {
-  return (
-    <div className="no-items-page">
+  if (noItems) {
+    return (
+      <div className="no-items-page">
 
-      <div className="no-items-card">
+        <div className="no-items-card">
 
-        {/* Top accent */}
-        <div className="no-items-accent" />
+          {/* Top accent */}
+          <div className="no-items-accent" />
 
-        {/* Animated icon */}
-        <div className="no-items-icon-wrapper">
+          {/* Animated icon */}
+          <div className="no-items-icon-wrapper">
 
-          <div className="no-items-icon-pulse" />
+            <div className="no-items-icon-pulse" />
 
-          <div className="no-items-icon">
-            <svg
-              width="34"
-              height="34"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              {/* Plate */}
-              <circle
-                cx="12"
-                cy="12"
-                r="8.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
+            <div className="no-items-icon">
+              <svg
+                width="34"
+                height="34"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Plate */}
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
 
-              {/* Fork / plate detail */}
-              <path
-                d="M8.5 8.5V12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+                {/* Fork / plate detail */}
+                <path
+                  d="M8.5 8.5V12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
 
-              <path
-                d="M10 8.5V12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+                <path
+                  d="M10 8.5V12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
 
-              <path
-                d="M9.25 12V15.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+                <path
+                  d="M9.25 12V15.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
 
-              <path
-                d="M15.5 8.5V15.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+                <path
+                  d="M15.5 8.5V15.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
 
-              <path
-                d="M15.5 8.5C14.4 9.2 14.2 10.8 15.5 11.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
+                <path
+                  d="M15.5 8.5C14.4 9.2 14.2 10.8 15.5 11.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
           </div>
+
+          {/* Heading */}
+          <div className="no-items-content">
+
+            <h1>
+              No Items Found
+            </h1>
+
+            <p className="no-items-description">
+              There are currently no items
+              <br />
+              added to this table.
+            </p>
+
+          </div>
+
+          {/* Table */}
+          <div className="no-items-table">
+
+            <span className="no-items-table-label">
+              TABLE
+            </span>
+
+            <span className="no-items-table-number">
+              {params.tableId}
+            </span>
+
+          </div>
+
+          {/* Main message */}
+          <div className="no-items-message">
+
+            <p>
+              Please place an order to continue.
+            </p>
+
+            <span>
+              Once items are added to your table,
+              <br />
+              your bill will appear here.
+            </span>
+
+          </div>
+
+          {/* Divider */}
+          <div className="no-items-divider" />
+
+          {/* Help */}
+          <div className="no-items-help">
+
+            <span className="no-items-help-label">
+              Need assistance?
+            </span>
+
+            <span className="no-items-help-text">
+              Please ask our staff for help.
+            </span>
+
+          </div>
+
         </div>
 
-        {/* Heading */}
-        <div className="no-items-content">
-
-          <h1>
-            No Items Found
-          </h1>
-
-          <p className="no-items-description">
-            There are currently no items
-            <br />
-            added to this table.
-          </p>
-
-        </div>
-
-        {/* Table */}
-        <div className="no-items-table">
-
-          <span className="no-items-table-label">
-            TABLE
-          </span>
-
-          <span className="no-items-table-number">
-            {params.tableId}
-          </span>
-
-        </div>
-
-        {/* Main message */}
-        <div className="no-items-message">
-
-          <p>
-            Please place an order to continue.
-          </p>
-
-          <span>
-            Once items are added to your table,
-            <br />
-            your bill will appear here.
-          </span>
-
-        </div>
-
-        {/* Divider */}
-        <div className="no-items-divider" />
-
-        {/* Help */}
-        <div className="no-items-help">
-
-          <span className="no-items-help-label">
-            Need assistance?
-          </span>
-
-          <span className="no-items-help-text">
-            Please ask our staff for help.
-          </span>
-
+        {/* Footer */}
+        <div className="no-items-brand">
+          Scan to Pay
         </div>
 
       </div>
-
-      {/* Footer */}
-      <div className="no-items-brand">
-        Scan to Pay
-      </div>
-
-    </div>
-  );
-}
+    );
+  }
   // ✅ 1. NO BILL UI
   if (noBill) {
     return (

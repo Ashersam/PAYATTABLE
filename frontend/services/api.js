@@ -3,10 +3,18 @@ const BASE = process.env.NEXT_PUBLIC_API_URL;
 // export const getBill = (tableId) =>
 // fetch(`${BASE}/bill/${tableId}`).then(r => r.json());
 
-export const getBill = async (tableId) => {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/bill/${tableId}`
-  );
+export const getBill = async (outletUuid, tableId) => {
+  if (!outletUuid || !tableId) {
+    throw new Error("Outlet UUID and table number are required");
+  }
+
+  const url =
+    `${BASE}/bill/${encodeURIComponent(outletUuid)}` +
+    `/${encodeURIComponent(tableId)}`;
+
+  const res = await fetch(url, {
+    cache: "no-store",
+  });
 
   const data = await res.json();
 
