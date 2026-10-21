@@ -1,5 +1,42 @@
 import { getOutletConfig } from "./outletConfig.service.js";
 
+const readRaptorJson = async (response, operation) => {
+  const text = await response.text();
+
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`${operation}: Raptor returned invalid JSON`);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `${operation} failed (HTTP ${response.status}): ${
+        data.msg || data.detail || text
+      }`
+    );
+  }
+
+  return data;
+};
+
+const assertRaptorSuccess = (data, operation) => {
+  if (Number(data?.errorcode) !== 1) {
+    const error = new Error(
+      `${operation} failed: ${data?.msg || "Raptor operation unsuccessful"}`
+    );
+
+    error.raptorResponse = data;
+    error.statusCode =
+      Number(data?.errorcode) === 2 ? 409 : 502;
+
+    throw error;
+  }
+
+  return data;
+};
+
 export const getRaptorToken = async (outletUuid = null) => {
   const config = await getOutletConfig(outletUuid);
 
@@ -78,21 +115,138 @@ export const getRaptorSalesNo = async (
   return data.salesno;
 };
 
+const fetchOpenTableList = async (config, accessToken) => {
+  const response = await fetch(
+    `${config.outlet_api_url}/order/open_table_list`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "*/*",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  const data = await readRaptorJson(
+    response,
+    "Raptor open table list"
+  );
+
+  assertRaptorSuccess(data, "Raptor open table list");
+
+  if (!Array.isArray(data.details)) {
+    throw new Error(
+      "Raptor open table list did not return a details array"
+    );
+  }
+
+  return data.details;
+};
+
+export const getRaptorOpenTableList = async (outletUuid) => {
+  const { accessToken, config } =
+    await getRaptorToken(outletUuid);
+
+  return fetchOpenTableList(config, accessToken);
+};
+
 export const getRaptorBill = async (
   tableNo,
   outletUuid = null
 ) => {
-  const {
-    accessToken,
-    config,
-  } = await getRaptorToken(outletUuid);
+  const { accessToken, config } =
+    await getRaptorToken(outletUuid);
 
-  const salesno = await getRaptorSalesNo(
-    config,
-    accessToken,
-    tableNo
-  );
+  let salesNo = null;
+  let splitNo = 0;
+  let openTables = [];
 
+  // 1. Try the original known-table lookup first.
+  try {
+    salesNo = await getRaptorSalesNo(
+      config,
+      accessToken,
+      tableNo
+    );
+  } catch (error) {
+    console.warn(
+      "Raptor salesno lookup failed; using open-table lookup.",
+      error.message
+    );
+  }
+
+  // 2. Use the open-table list to identify the matching split.
+  //    Failure of this optional lookup must not block a sale
+  //    already identified by /hds/salesno.
+  try {
+    openTables = await fetchOpenTableList(
+      config,
+      accessToken
+    );
+  } catch (error) {
+    if (salesNo == null) {
+      throw error;
+    }
+
+    console.warn(
+      "Could not retrieve open-table list; continuing with the known sales number."
+    );
+  }
+
+  if (salesNo != null) {
+    // Match both table and sales number; don't select an
+    // unrelated or older bill from the same table.
+    const match = openTables.find(
+      (entry) =>
+        String(entry.tablename ?? entry.tableno) ===
+          String(tableNo) &&
+        String(entry.salesno) === String(salesNo)
+    );
+
+    if (match) {
+      splitNo = Number(match.splitno ?? 0);
+    } else {
+      // Preserve the original behavior for the known-table path.
+      // The viewbill response must still identify the requested sale.
+      console.warn(
+        `Sales ${salesNo} was not found in open_table_list; trying viewbill with split ${splitNo}.`
+      );
+    }
+  } else {
+    // 3. The known-table lookup failed, so use the documented
+    //    open-table-list alternative.
+    const candidates = openTables.filter(
+      (entry) =>
+        String(entry.tablename ?? entry.tableno) ===
+          String(tableNo) &&
+        Number(entry.balance || 0) > 0
+    );
+
+    if (candidates.length === 0) {
+      const error = new Error(
+        `No outstanding bill was found for table ${tableNo}`
+      );
+
+      error.code = "NO_ACTIVE_BILL";
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (candidates.length > 1) {
+      const error = new Error(
+        `Multiple outstanding bills found for table ${tableNo}`
+      );
+
+      error.code = "AMBIGUOUS_OPEN_BILL";
+      error.statusCode = 409;
+      throw error;
+    }
+
+    salesNo = Number(candidates[0].salesno);
+    splitNo = Number(candidates[0].splitno ?? 0);
+  }
+
+  // 4. Fetch the latest bill from Raptor.
   const response = await fetch(
     `${config.outlet_api_url}/info/viewbill`,
     {
@@ -104,23 +258,53 @@ export const getRaptorBill = async (
       body: JSON.stringify({
         posid: config.posid,
         operatorno: config.operatorno,
-        salesno,
-        splitno: 0,
-        tableno: tableNo,
+        tableno: String(tableNo),
+        salesno: Number(salesNo),
+        splitno: Number(splitNo),
       }),
     }
   );
 
-  if (!response.ok) {
-    const text = await response.text();
+  const data = await readRaptorJson(
+    response,
+    "Raptor viewbill"
+  );
 
-    throw new Error(
-      `Raptor viewbill failed: ${response.status} ${text}`
+  // 5. Validate the response before syncing it to PostgreSQL.
+  const heldTable = data?.held_table;
+
+  if (
+    !heldTable ||
+    heldTable.msg !== "Held Table found"
+  ) {
+    const error = new Error(
+      `Raptor did not return an active bill for table ${tableNo}`
     );
+
+    error.code = "NO_ACTIVE_BILL";
+    error.statusCode = 404;
+    throw error;
   }
 
-  return await response.json();
+  if (
+    String(heldTable.tableno) !== String(tableNo) ||
+    String(heldTable.salesno) !== String(salesNo)
+  ) {
+    const error = new Error(
+      "Raptor returned a different table or sales number than requested"
+    );
+
+    error.code = "BILL_IDENTITY_MISMATCH";
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Preserve the outlet UUID for PostgreSQL bill syncing.
+  data.outletuuid = config.outletuuid;
+
+  return data;
 };
+
 export const mapRaptorBill = (data, outletUuid = null) => {
   const heldTable = data.held_table;
 
@@ -206,6 +390,61 @@ export const mapRaptorBill = (data, outletUuid = null) => {
   };
 };
 
+const updateRaptorTableState = async ({
+  outletUuid,
+  tableNo,
+  salesNo,
+  splitNo = 0,
+  endpoint,
+}) => {
+  if (!outletUuid || !tableNo || !salesNo) {
+    throw new Error(
+      "Outlet UUID, table number and sales number are required"
+    );
+  }
+
+  const { accessToken, config } =
+    await getRaptorToken(outletUuid);
+
+  const response = await fetch(
+    `${config.outlet_api_url}${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "*/*",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        posid: config.posid,
+        operator: Number(config.operatorno),
+        tablename: String(tableNo),
+        salesno: Number(salesNo),
+        splitno: Number(splitNo),
+      }),
+    }
+  );
+
+  const data = await readRaptorJson(
+    response,
+    `Raptor ${endpoint}`
+  );
+
+  return assertRaptorSuccess(data, `Raptor ${endpoint}`);
+};
+
+export const recallRaptorTable = async (details) =>
+  updateRaptorTableState({
+    ...details,
+    endpoint: "/order/recall_table",
+  });
+
+export const holdRaptorTable = async (details) =>
+  updateRaptorTableState({
+    ...details,
+    endpoint: "/order/hold_table",
+  });
+
 export const doRaptorPayment = async ({
   outletUuid = null,
   tableNo,
@@ -214,6 +453,7 @@ export const doRaptorPayment = async ({
   paymentType = 10,
   paidAmount,
   customerId = "",
+  idempotencyKey,
 }) => {
   const {
     accessToken,
@@ -229,6 +469,7 @@ export const doRaptorPayment = async ({
     paymenttype: Number(paymentType),
     paidamount: Number(paidAmount),
     customerid: customerId || "",
+    idempotencyKey,
   };
 
   const response = await fetch(
@@ -271,11 +512,19 @@ export const doRaptorPayment = async ({
   //   "tipamount": 0.0
   // }
 
+  if (Number(data.errorcode) !== 1) {
+    throw new Error(
+      `Raptor payment request failed: ${data.msg || "Unknown error"}`
+    );
+  }
+  
   if (
-    String(data.paymentmsg || "").toLowerCase() !== "paid"
+    String(data.paymentmsg || "").trim().toLowerCase() !== "paid"
   ) {
     throw new Error(
-      `Raptor payment was not successful: ${JSON.stringify(data)}`
+      `Raptor has not confirmed full payment: ${
+        data.paymentmsg || data.msg || "Unknown payment status"
+      }`
     );
   }
 

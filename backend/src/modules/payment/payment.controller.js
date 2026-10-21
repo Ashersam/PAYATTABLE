@@ -1,7 +1,13 @@
 import { db } from "../../db/index.js";
 import { createPaymentIntent } from "./payment.service.js";
 import { POS } from "../../adapters/pos.adapter.js";
-import { getRaptorEReceipt } from "../../services/raptor.service.js";
+import {
+  getRaptorBill,
+  mapRaptorBill,
+  recallRaptorTable,
+  holdRaptorTable,
+  getRaptorEReceipt,
+} from "../../services/raptor.service.js";
 
 export const getReceipt = async (req, res) => {
   try {
@@ -177,113 +183,279 @@ export const confirmPayment = async (req, res) => {
 //     res.status(500).json({ error: "Payment failed" });
 //   }
 // };
+// export const createPayment = async (req, res) => {
+//   try {
+//     const {
+//       billId,
+//       tip = 0,
+//       currency,
+//     } = req.body;
+
+//     // ---------------------------------------------------------
+//     // 1. Find the synced bill
+//     // ---------------------------------------------------------
+
+//     const billRes = await db.query(
+//       `
+//       SELECT *
+//       FROM bills
+//       WHERE receipt_no = $1
+//       LIMIT 1
+//       `,
+//       [billId]
+//     );
+
+//     const bill = billRes.rows[0];
+
+//     if (!bill) {
+//       return res.status(404).json({
+//         error: "Bill not found",
+//       });
+//     }
+
+//     // ---------------------------------------------------------
+//     // 2. Check whether bill is already paid
+//     // ---------------------------------------------------------
+
+//     const existing = await db.query(
+//       `
+//       SELECT *
+//       FROM payments
+//       WHERE bill_id = $1
+//       AND status = 'PAID'
+//       LIMIT 1
+//       `,
+//       [bill.id]
+//     );
+
+//     if (existing.rows.length) {
+//       return res.status(409).json({
+//         error: "Bill already paid",
+//         code: "BILL_ALREADY_PAID",
+//         receipt_no: bill.receipt_no,
+//       });
+//     }
+
+//     // ---------------------------------------------------------
+//     // 3. Calculate payment amount
+//     //
+//     // bill.total = Raptor outstanding balance
+//     //
+//     // Example:
+//     // balance = 3.40
+//     // tip     = 0.30
+//     // payment = 3.70
+//     // ---------------------------------------------------------
+
+//     const billBalance = Number(bill.total || 0);
+//     const tipAmount = Number(tip || 0);
+
+//     if (billBalance <= 0) {
+//       return res.status(400).json({
+//         error: "Invalid bill balance",
+//       });
+//     }
+
+//     if (tipAmount < 0) {
+//       return res.status(400).json({
+//         error: "Invalid tip",
+//       });
+//     }
+
+//     const totalAmount = Number(
+//       (billBalance + tipAmount).toFixed(2)
+//     );
+
+//     // ---------------------------------------------------------
+//     // 4. Create Airwallex Payment Intent
+//     // ---------------------------------------------------------
+
+//     const intent = await createPaymentIntent(
+//       {
+//         ...bill,
+
+//         // IMPORTANT:
+//         // Airwallex must receive balance + tip
+//         total: totalAmount,
+
+//         currency: currency || bill.currency,
+//       },
+//       tipAmount
+//     );
+    
+//     // ---------------------------------------------------------
+//     // 5. Save PENDING payment
+//     // ---------------------------------------------------------
+
+//     await db.query(
+//       `
+//       INSERT INTO payments
+//       (
+//         bill_id,
+//         receipt_no,
+//         amount,
+//         tip,
+//         currency,
+//         status,
+//         provider,
+//         intent_id
+//       )
+//       VALUES
+//       ($1,$2,$3,$4,$5,$6,$7,$8)
+//       `,
+//       [
+//         bill.id,
+//         bill.receipt_no,
+//         totalAmount,
+//         tipAmount,
+//         currency || bill.currency,
+//         "PENDING",
+//         "AIRWALLEX",
+//         intent.id,
+//       ]
+//     );
+
+//     // ---------------------------------------------------------
+//     // 6. Return PaymentIntent details to frontend
+//     // ---------------------------------------------------------
+
+//     return res.json({
+//       intent_id: intent.id,
+//       client_secret: intent.client_secret,
+//       currency: currency || bill.currency,
+
+//       // useful for frontend debugging/display
+//       amount: totalAmount,
+//       bill_balance: billBalance,
+//       tip: tipAmount,
+//     });
+
+//   } catch (err) {
+//     console.error("❌ createPayment error:", err);
+
+//     return res.status(500).json({
+//       error: "Payment failed",
+//       message: err.message,
+//     });
+//   }
+// };
+
+
 export const createPayment = async (req, res) => {
+  let recalled = false;
+  let recallDetails = null;
+
   try {
     const {
+      outletUuid,
+      tableId,
       billId,
       tip = 0,
-      currency,
     } = req.body;
 
-    // ---------------------------------------------------------
-    // 1. Find the synced bill
-    // ---------------------------------------------------------
+    // 1. Validate the request.
+    if (!outletUuid || !tableId || !billId) {
+      return res.status(400).json({
+        error: "Outlet UUID, table number and receipt number are required",
+      });
+    }
 
-    const billRes = await db.query(
-      `
-      SELECT *
-      FROM bills
-      WHERE receipt_no = $1
-      LIMIT 1
-      `,
-      [billId]
+    const tipAmount = Number(tip);
+
+    if (!Number.isFinite(tipAmount) || tipAmount < 0) {
+      return res.status(400).json({
+        error: "Invalid tip amount",
+      });
+    }
+
+    // 2. Refresh the latest bill from the selected Raptor outlet.
+    const raptorData = await getRaptorBill(
+      tableId,
+      outletUuid
     );
 
-    const bill = billRes.rows[0];
+    const bill = mapRaptorBill(
+      raptorData,
+      outletUuid
+    );
 
     if (!bill) {
       return res.status(404).json({
-        error: "Bill not found",
+        error: "No active bill",
+        code: "NO_ACTIVE_BILL",
       });
     }
 
-    // ---------------------------------------------------------
-    // 2. Check whether bill is already paid
-    // ---------------------------------------------------------
+    // 3. Ensure the customer is paying the bill they reviewed.
+    if (String(bill.receipt_no) !== String(billId)) {
+      return res.status(409).json({
+        error: "The bill has changed. Please reload the page.",
+        code: "BILL_CHANGED",
+      });
+    }
 
-    const existing = await db.query(
+    // Raptor's current outstanding balance is authoritative.
+    const balance = Number(bill.balance);
+
+    if (!Number.isFinite(balance) || balance <= 0) {
+      return res.status(409).json({
+        error: "There is no outstanding balance to pay.",
+        code: "NO_OUTSTANDING_BALANCE",
+      });
+    }
+
+    // 4. Sync the current bill to PostgreSQL.
+    const dbBillId = await syncRaptorBill(bill);
+
+    // 5. Refuse to collect payment for a bill already marked paid.
+    const paidCheck = await db.query(
       `
-      SELECT *
-      FROM payments
+      SELECT id
+      FROM public.payments
       WHERE bill_id = $1
-      AND status = 'PAID'
+        AND status = 'PAID'
       LIMIT 1
       `,
-      [bill.id]
+      [dbBillId]
     );
 
-    if (existing.rows.length) {
+    if (paidCheck.rows.length) {
       return res.status(409).json({
-        error: "Bill already paid",
+        error: "This bill has already been paid.",
         code: "BILL_ALREADY_PAID",
-        receipt_no: bill.receipt_no,
       });
     }
 
-    // ---------------------------------------------------------
-    // 3. Calculate payment amount
-    //
-    // bill.total = Raptor outstanding balance
-    //
-    // Example:
-    // balance = 3.40
-    // tip     = 0.30
-    // payment = 3.70
-    // ---------------------------------------------------------
+    // 6. Recall the exact Raptor table, sale and split.
+    recallDetails = {
+      outletUuid,
+      tableNo: String(bill.table_id),
+      salesNo: Number(bill.salesno),
+      splitNo: Number(bill.splitno || 0),
+    };
 
-    const billBalance = Number(bill.total || 0);
-    const tipAmount = Number(tip || 0);
+    await recallRaptorTable(recallDetails);
+    recalled = true;
 
-    if (billBalance <= 0) {
-      return res.status(400).json({
-        error: "Invalid bill balance",
-      });
-    }
-
-    if (tipAmount < 0) {
-      return res.status(400).json({
-        error: "Invalid tip",
-      });
-    }
-
+    // 7. Calculate payment from outstanding balance plus tip.
     const totalAmount = Number(
-      (billBalance + tipAmount).toFixed(2)
+      (balance + tipAmount).toFixed(2)
     );
 
-    // ---------------------------------------------------------
-    // 4. Create Airwallex Payment Intent
-    // ---------------------------------------------------------
-
+    // 8. Create the Airwallex PaymentIntent.
     const intent = await createPaymentIntent(
       {
         ...bill,
-
-        // IMPORTANT:
-        // Airwallex must receive balance + tip
         total: totalAmount,
-
-        currency: currency || bill.currency,
+        currency: bill.currency,
       },
       tipAmount
     );
-    
-    // ---------------------------------------------------------
-    // 5. Save PENDING payment
-    // ---------------------------------------------------------
 
+    // 9. Save the payment attempt as PENDING.
     await db.query(
       `
-      INSERT INTO payments
+      INSERT INTO public.payments
       (
         bill_id,
         receipt_no,
@@ -294,45 +466,76 @@ export const createPayment = async (req, res) => {
         provider,
         intent_id
       )
-      VALUES
-      ($1,$2,$3,$4,$5,$6,$7,$8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `,
       [
-        bill.id,
+        dbBillId,
         bill.receipt_no,
         totalAmount,
         tipAmount,
-        currency || bill.currency,
+        bill.currency,
         "PENDING",
         "AIRWALLEX",
         intent.id,
       ]
     );
 
-    // ---------------------------------------------------------
-    // 6. Return PaymentIntent details to frontend
-    // ---------------------------------------------------------
-
     return res.json({
       intent_id: intent.id,
       client_secret: intent.client_secret,
-      currency: currency || bill.currency,
-
-      // useful for frontend debugging/display
+      currency: bill.currency,
       amount: totalAmount,
-      bill_balance: billBalance,
+      bill_balance: balance,
       tip: tipAmount,
     });
-
   } catch (err) {
-    console.error("❌ createPayment error:", err);
-
-    return res.status(500).json({
-      error: "Payment failed",
+    console.error("Payment preparation failed:", {
       message: err.message,
+      code: err.code,
+      statusCode: err.statusCode,
+      raptorResponse: err.raptorResponse,
+    });
+
+    // If recall succeeded but checkout preparation failed,
+    // attempt to restore the table.
+    if (recalled && recallDetails) {
+      try {
+        await holdRaptorTable(recallDetails);
+      } catch (holdError) {
+        console.error(
+          "Failed to restore Raptor table:",
+          holdError.message
+        );
+      }
+    }
+
+    if (err.code === "NO_ACTIVE_BILL") {
+      return res.status(404).json({
+        error: "No outstanding bill was found for this table.",
+        code: err.code,
+      });
+    }
+
+    if (Number(err.raptorResponse?.errorcode) === 2) {
+      return res.status(409).json({
+        error:
+          "This table is currently open on another POS. Please ask staff for assistance.",
+        code: "TABLE_BUSY",
+      });
+    }
+
+    const statusCode =
+      err.statusCode >= 400 && err.statusCode < 600
+        ? err.statusCode
+        : 502;
+
+    return res.status(statusCode).json({
+      error: "Unable to prepare payment. Please try again or ask staff.",
+      code: err.code || "PAYMENT_PREPARATION_FAILED",
     });
   }
 };
+
 
 export const getPaymentStatus = async (req, res) => {
   const { billId } = req.query;

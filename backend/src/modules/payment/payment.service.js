@@ -1,4 +1,5 @@
 import axios from "axios";
+import { randomUUID } from "node:crypto";
 import { getAirwallexToken } from "../../config/airwallex.js";
 
 export const createPaymentIntent = async (bill, tip) => {
@@ -11,7 +12,8 @@ export const createPaymentIntent = async (bill, tip) => {
   }
 
   const payload = {
-    request_id: `req_${Date.now()}`,
+    // request_id: `req_${Date.now()}`,
+    request_id: randomUUID(),
 
     // ✅ FIXED
     amount: amount,
@@ -24,7 +26,11 @@ export const createPaymentIntent = async (bill, tip) => {
     confirmation_method: "automatic",
     capture_method: "automatic",
 
-    return_url: process.env.FRONTEND_URL + "/success",
+    // return_url: process.env.FRONTEND_URL + "/success",
+    return_url:
+      `${(process.env.FRONTEND_URL || "").replace(/\/+$/, "")}` +
+      `/success?receiptNo=${encodeURIComponent(bill.receipt_no)}` +
+      `&outletUuid=${encodeURIComponent(bill.outletuuid || "")}`,
 
     customer: {
       merchant_customer_id: `cust_${bill.receipt_no}`,
@@ -37,8 +43,13 @@ export const createPaymentIntent = async (bill, tip) => {
       account_id_external: process.env.CONNECTED_ACCOUNT_ID,
       payment_source: process.env.PAYMENT_SOURCE,
       partner_id: process.env.PARTNER_ID,
-      method_type: process.env.PAYMENT_METHOD_TYPE, 
-      pos_id: "POS001"
+      method_type: process.env.PAYMENT_METHOD_TYPE,
+      pos_id: String(bill.posid || ""),
+
+      outlet_uuid: String(bill.outletuuid || ""),
+      sales_no: String(bill.salesno || ""),
+      split_no: String(bill.splitno ?? 0),
+      tip: String(tip ?? 0),
     },
   };
 

@@ -49,15 +49,40 @@ export const getBill = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Bill fetch failed:", err);
+    console.error("Bill fetch failed:", {
+      message: err.message,
+      code: err.code,
+      statusCode: err.statusCode,
+      raptorResponse: err.raptorResponse,
+    });
 
-    const statusCode = err.statusCode || 500;
+    // The outlet UUID did not match a configured outlet.
+    if (err.message === "Outlet not found") {
+      return res.status(404).json({
+        error: "Outlet not found",
+      });
+    }
 
-    return res.status(statusCode).json({
-      error:
-        statusCode === 404
-          ? "Outlet not found"
-          : "Failed to fetch bill",
+    // The outlet exists, but no matching outstanding bill was found.
+    if (err.code === "NO_ACTIVE_BILL") {
+      return res.status(404).json({
+        error: "No active bill",
+        message: err.message,
+      });
+    }
+
+    // More than one outstanding split matches this table.
+    if (err.code === "AMBIGUOUS_OPEN_BILL") {
+      return res.status(409).json({
+        error: "Multiple open bills found",
+        message: err.message,
+      });
+    }
+
+    return res.status(err.statusCode || 500).json({
+      error: "Failed to fetch bill",
+      message: err.message,
+      code: err.code || "BILL_FETCH_FAILED",
     });
   }
 };

@@ -174,11 +174,17 @@ export default function Page() {
         (payableAmount + Number(tip || 0)).toFixed(2)
       );
 
+      // const res = await createPayment({
+      //   billId: bill.receipt_no,
+      //   amount: paymentAmount,
+      //   tip: Number(tip || 0),
+      //   currency: bill.currency,
+      // });
       const res = await createPayment({
+        outletUuid: params.outletUuid,
+        tableId: params.tableId,
         billId: bill.receipt_no,
-        amount: paymentAmount,
         tip: Number(tip || 0),
-        currency: bill.currency,
       });
 
       if (!res || res.error) {
