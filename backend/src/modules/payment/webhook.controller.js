@@ -633,16 +633,9 @@ export const handlePaymentSuccess = async (req, res) => {
             idempotencyKey: `airwallex-${intentId}`,
         });
 
-        if (
-            Number(raptorResult?.errorcode) !== 1 ||
-            String(raptorResult?.paymentmsg ?? "")
-                .trim()
-                .toLowerCase() !== "paid"
-        ) {
+        if (raptorResult?.success !== true) {
             throw new Error(
-                `Raptor payment not confirmed. ` +
-                `errorcode=${raptorResult?.errorcode}, ` +
-                `paymentmsg=${raptorResult?.paymentmsg}`
+                `Raptor payment not confirmed for intent ${intentId}.`
             );
         }
 

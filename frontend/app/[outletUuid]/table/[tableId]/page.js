@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { getBill, createPayment, confirmPayment } from "@/services/api";
+import { getBill, createPayment } from "@/services/api";
 import DropIn from "@/components/DropIn";
 import { getSymbol } from "@/services/helper";
 import ProcessingScreen from "@/components/ProcessingScreen";
@@ -38,6 +38,7 @@ export default function Page() {
   const [noBill, setNoBill] = useState(false);
   const [alreadyPaid, setAlreadyPaid] = useState(false);
   const [noItems, setNoItems] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
 
   const symbol = getSymbol(currency);
 
@@ -119,19 +120,23 @@ export default function Page() {
 
 
   const startPollingStatus = () => {
-    if (pollingRef.current) return; // already polling
+    if (pollingRef.current) return;
 
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/payment/status?billId=${bill.receipt_no}`
+          `${process.env.NEXT_PUBLIC_API_URL}/payment/status?billId=${encodeURIComponent(
+            bill.receipt_no
+          )}`
         );
 
         if (!res.ok) return;
 
         const data = await res.json();
+        const status = String(data.status || "PENDING").toUpperCase();
 
-        if (data.status === "PAID") {
+        // Payment is confirmed by the backend webhook.
+        if (status === "PAID") {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
 
@@ -139,14 +144,37 @@ export default function Page() {
           setShowFinalSuccess(true);
           setIsPaid(true);
 
-          setTimeout(() => {
-            router.push(
-              `/success?receiptNo=${bill.receipt_no}`
+          return;
+        }
+
+        // Stop polling when the backend reports a terminal failure.
+        if (["FAILED", "CANCELLED", "EXPIRED"].includes(status)) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+
+          setProcessingSuccess(false);
+          setShowFinalSuccess(false);
+          setProcessing(false);
+          setIntentId(null);
+          setClientSecret(null);
+          setDropinLoading(true);
+
+          if (status === "CANCELLED") {
+            setPaymentError(
+              "Payment was cancelled. You can try again."
             );
-          }, 2000);
+          } else if (status === "EXPIRED") {
+            setPaymentError(
+              "The payment session expired. Please try again."
+            );
+          } else {
+            setPaymentError(
+              "Payment could not be completed. Please try again or ask staff for help."
+            );
+          }
         }
       } catch (err) {
-        console.error(err);
+        console.error("Payment status polling failed:", err);
       }
     }, 3000);
   };
@@ -168,6 +196,7 @@ export default function Page() {
 
   const handlePay = async () => {
     try {
+      setPaymentError("");
       setProcessing(true);
 
       const paymentAmount = Number(
@@ -193,12 +222,19 @@ export default function Page() {
         return;
       }
 
+      setPaymentError("");
       setIntentId(res.intent_id);
       setClientSecret(res.client_secret);
       setCurrency(res.currency || bill.currency);
 
+      // Watch for webhook-confirmed success, failure or cancellation.
+      startPollingStatus();
+
     } catch (error) {
-      console.error("❌ handlePay error:", error);
+      console.error("handlePay error:", error);
+      setPaymentError(
+        error.message || "Unable to prepare payment. Please try again."
+      );
       setProcessing(false);
     }
   };
@@ -536,6 +572,7 @@ export default function Page() {
       {/* {processingSuccess && (
         <LoadingScreen text="Confirming Payment..." />
       )}
+      
 
       {showFinalSuccess && <SuccessAnimation />} */}
       {(processingSuccess || showFinalSuccess) && (
@@ -543,6 +580,15 @@ export default function Page() {
           processing={processingSuccess}
           success={showFinalSuccess}
         />
+      )}
+
+      {paymentError && !processingSuccess && !showFinalSuccess && (
+        <div
+          role="alert"
+          className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {paymentError}
+        </div>
       )}
 
       <div className="w-full max-w-md mx-auto bg-white rounded-[28px] shadow-[0_8px_35px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">

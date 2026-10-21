@@ -1,6 +1,6 @@
 import { db } from "../../db/index.js";
 import { createPaymentIntent } from "./payment.service.js";
-import { POS } from "../../adapters/pos.adapter.js";
+// import { POS } from "../../adapters/pos.adapter.js";
 import {
   getRaptorBill,
   mapRaptorBill,
@@ -8,6 +8,7 @@ import {
   holdRaptorTable,
   getRaptorEReceipt,
 } from "../../services/raptor.service.js";
+import { syncRaptorBill } from "../../services/billSync.service.js";
 
 export const getReceipt = async (req, res) => {
   try {
@@ -80,47 +81,47 @@ export const getReceipt = async (req, res) => {
   }
 };
 
-export const confirmPayment = async (req, res) => {
-  try {
-    const { intentId, billId, amount, tip, currency } = req.body;
+// export const confirmPayment = async (req, res) => {
+//   try {
+//     const { intentId, billId, amount, tip, currency } = req.body;
 
-    const paymentRes = await db.query(
-      "SELECT * FROM payments WHERE intent_id=$1",
-      [intentId]
-    );
+//     const paymentRes = await db.query(
+//       "SELECT * FROM payments WHERE intent_id=$1",
+//       [intentId]
+//     );
 
-    const payment = paymentRes.rows[0];
-    if (!payment) {
-      return res.status(404).json({ error: "Payment not found" });
-    }
+//     const payment = paymentRes.rows[0];
+//     if (!payment) {
+//       return res.status(404).json({ error: "Payment not found" });
+//     }
 
-    // ✅ mark PAID
-    await db.query(
-      "UPDATE payments SET status='PAID' WHERE intent_id=$1",
-      [intentId]
-    );
+//     // ✅ mark PAID
+//     await db.query(
+//       "UPDATE payments SET status='PAID' WHERE intent_id=$1",
+//       [intentId]
+//     );
 
-    // ✅ expire others
-    await db.query(
-      "UPDATE payments SET status='EXPIRED' WHERE bill_id=$1 AND intent_id != $2",
-      [payment.bill_id, intentId]
-    );
+//     // ✅ expire others
+//     await db.query(
+//       "UPDATE payments SET status='EXPIRED' WHERE bill_id=$1 AND intent_id != $2",
+//       [payment.bill_id, intentId]
+//     );
 
-    // 🔥 CLOSE BILL USING POS FORMAT
-    await POS.closeBill({
-      receipt_no: billId,
-      paid_amount: amount,
-      tips_amount: tip,
-      currency,
-      payment_method: "QR",
-    });
+//     // 🔥 CLOSE BILL USING POS FORMAT
+//     await POS.closeBill({
+//       receipt_no: billId,
+//       paid_amount: amount,
+//       tips_amount: tip,
+//       currency,
+//       payment_method: "QR",
+//     });
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Confirm failed" });
-  }
-};
+//     res.json({ success: true });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Confirm failed" });
+//   }
+// };
 
 // export const createPayment = async (req, res) => {
 //   try {
