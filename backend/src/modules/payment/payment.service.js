@@ -82,3 +82,39 @@ export const buildClosePayload = ({
     payment_at: new Date().toISOString(),
   };
 };
+
+// Retrieve the latest PaymentIntent status from Airwallex.
+export const retrievePaymentIntent = async (intentId) => {
+  const token = await getAirwallexToken();
+
+  const response = await axios.get(
+    `${process.env.AIRWALLEX_BASE_URL}/api/v1/pa/payment_intents/${encodeURIComponent(intentId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return response.data;
+};
+
+// Cancel a PaymentIntent through Airwallex.
+export const cancelAirwallexPaymentIntent = async (intentId) => {
+  const token = await getAirwallexToken();
+
+  const response = await axios.post(
+    `${process.env.AIRWALLEX_BASE_URL}/api/v1/pa/payment_intents/${encodeURIComponent(intentId)}/cancel`,
+    {
+      request_id: randomUUID(),
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      timeout: 15000,
+    }
+  );
+
+  return response.data;
+};

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { getBill, createPayment } from "@/services/api";
 import DropIn from "@/components/DropIn";
 import { getSymbol } from "@/services/helper";
@@ -24,6 +25,7 @@ export default function Page() {
   const params = useParams();
   const router = useRouter();
   const pollingRef = useRef(null);
+  const paymentErrorRef = useRef(null);
   const [bill, setBill] = useState(null);
   const [tip, setTip] = useState(0);
   const [intentId, setIntentId] = useState(null);
@@ -39,8 +41,18 @@ export default function Page() {
   const [alreadyPaid, setAlreadyPaid] = useState(false);
   const [noItems, setNoItems] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [paymentErrorCode, setPaymentErrorCode] = useState("");
 
   const symbol = getSymbol(currency);
+
+  useEffect(() => {
+    if (!paymentError) return;
+  
+    paymentErrorRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [paymentError]);
 
   // ✅ SINGLE FETCH (FIXED)
   useEffect(() => {
@@ -139,7 +151,8 @@ export default function Page() {
         if (status === "PAID") {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
-
+          setPaymentError("");
+          setPaymentErrorCode("");
           setProcessingSuccess(false);
           setShowFinalSuccess(true);
           setIsPaid(true);
@@ -160,14 +173,17 @@ export default function Page() {
           setDropinLoading(true);
 
           if (status === "CANCELLED") {
+            setPaymentErrorCode("CANCELLED");
             setPaymentError(
               "Payment was cancelled. You can try again."
             );
           } else if (status === "EXPIRED") {
+            setPaymentErrorCode("EXPIRED");
             setPaymentError(
               "The payment session expired. Please try again."
             );
           } else {
+            setPaymentErrorCode("FAILED");
             setPaymentError(
               "Payment could not be completed. Please try again or ask staff for help."
             );
@@ -197,11 +213,8 @@ export default function Page() {
   const handlePay = async () => {
     try {
       setPaymentError("");
+      setPaymentErrorCode("");
       setProcessing(true);
-
-      const paymentAmount = Number(
-        (payableAmount + Number(tip || 0)).toFixed(2)
-      );
 
       // const res = await createPayment({
       //   billId: bill.receipt_no,
@@ -217,9 +230,14 @@ export default function Page() {
       });
 
       if (!res || res.error) {
-        console.error("❌ Payment creation failed:", res);
         setProcessing(false);
         return;
+      }
+
+      if (!res?.intent_id || !res?.client_secret) {
+        throw new Error(
+          "Unable to start checkout. Please try again."
+        );
       }
 
       setPaymentError("");
@@ -231,11 +249,50 @@ export default function Page() {
       startPollingStatus();
 
     } catch (error) {
-      console.error("handlePay error:", error);
-      setPaymentError(
-        error.message || "Unable to prepare payment. Please try again."
-      );
       setProcessing(false);
+      const code = error?.code;
+
+      // These errors require the customer's attention.
+      const persistentErrorCodes = [
+        "TABLE_BUSY",
+        "BILL_CHANGED",
+        "BILL_ALREADY_PAID",
+        "NO_OUTSTANDING_BALANCE",
+        "NO_ACTIVE_BILL",
+      ];
+
+      if (persistentErrorCodes.includes(code)) {
+        setPaymentErrorCode(code);
+
+        const messages = {
+          TABLE_BUSY:
+            "This table is currently open on another POS. Please ask staff for assistance.",
+          BILL_CHANGED:
+            "The bill has changed. Please reload the page before paying.",
+          BILL_ALREADY_PAID:
+            "This bill has already been paid. Please ask staff for assistance.",
+          NO_OUTSTANDING_BALANCE:
+            "There is no outstanding balance to pay.",
+          NO_ACTIVE_BILL:
+            "No active bill was found for this table.",
+        };
+
+        setPaymentError(
+          messages[code] ||
+          error.message ||
+          "Payment needs attention."
+        );
+
+        return;
+      }
+
+      // Temporary errors use a dismissible snackbar.
+      toast.error("Unable to start payment", {
+        description:
+          error.message ||
+          "Please check your connection and try again.",
+        duration: 5000,
+      });
     }
   };
 
@@ -582,17 +639,8 @@ export default function Page() {
         />
       )}
 
-      {paymentError && !processingSuccess && !showFinalSuccess && (
-        <div
-          role="alert"
-          className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-        >
-          {paymentError}
-        </div>
-      )}
-
       <div className="w-full max-w-md mx-auto bg-white rounded-[28px] shadow-[0_8px_35px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
-
+        {/* Modern responsive payment error */}
         {/* Header */}
         <HeaderCard
           tableId={params.tableId}
@@ -685,7 +733,55 @@ export default function Page() {
           ) : (
             <SuccessPage receiptNo={bill.receipt_no} />
           )}
+          {paymentError && !processingSuccess && !showFinalSuccess && (
+          <div
+            role="alert"
+            ref={paymentErrorRef}
+            aria-live="assertive"
+            className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 sm:mx-5"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                className="h-5 w-5"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path
+                  d="M12 8v4m0 4h.01"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-red-900 sm:text-base">
+                {paymentErrorCode === "TABLE_BUSY"
+                  ? "Table unavailable"
+                  : paymentErrorCode === "BILL_CHANGED"
+                    ? "Bill changed"
+                    : paymentErrorCode === "BILL_ALREADY_PAID"
+                      ? "Bill already paid"
+                      : "Payment needs attention"}
+              </h3>
+
+              <p className="mt-1 break-words text-sm leading-5 text-red-700">
+                {paymentError}
+              </p>
+
+              {paymentErrorCode === "TABLE_BUSY" && (
+                <p className="mt-2 text-xs leading-5 text-red-800">
+                  Please ask a staff member to release the table before trying again.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         </div>
+        
       </div>
     </div>
   );

@@ -8,6 +8,11 @@ import {
     holdRaptorTable,
 } from "../../services/raptor.service.js";
 
+import {
+    retrievePaymentIntent,
+    cancelAirwallexPaymentIntent,
+} from "./payment.service.js";
+
 const SUPPORTED_EVENTS = new Set([
     "payment_intent.succeeded",
     "payment_intent.payment_failed",
@@ -87,16 +92,37 @@ function verifyWebhookSignature(req) {
     const timestampNumber = Number(timestamp);
 
     if (!Number.isFinite(timestampNumber)) {
+        console.error("Airwallex webhook timestamp is invalid.");
         return false;
     }
 
-    // Reject old or excessively future-dated webhook requests.
-    if (
-        Math.abs(Date.now() - timestampNumber) >
-        SIGNATURE_TOLERANCE_MS
-    ) {
-        console.error("Airwallex webhook timestamp is outside tolerance.");
+    // Airwallex documents milliseconds.
+    // Also handle a 10-digit Unix-seconds value if one is received.
+    const timestampMs =
+        timestampNumber < 1e12
+            ? timestampNumber * 1000
+            : timestampNumber;
 
+    const nowMs = Date.now();
+    const differenceMs = nowMs - timestampMs;
+
+    console.log("Airwallex webhook timestamp diagnostic:", {
+        receivedTimestamp: timestamp,
+        interpretedAs:
+            timestampNumber < 1e12 ? "seconds" : "milliseconds",
+        serverTimeUtc: new Date(nowMs).toISOString(),
+        receivedTimeUtc:
+            timestampMs > 0 && timestampMs < 8.64e15
+                ? new Date(timestampMs).toISOString()
+                : "invalid",
+        differenceSeconds: Math.round(differenceMs / 1000),
+    });
+
+    // Keep the five-minute security tolerance.
+    if (Math.abs(differenceMs) > SIGNATURE_TOLERANCE_MS) {
+        console.error(
+            "Airwallex webhook timestamp is outside tolerance."
+        );
         return false;
     }
 
@@ -400,7 +426,7 @@ export const handlePaymentSuccess = async (req, res) => {
                 initialPayment.currency &&
                 intent.currency &&
                 String(initialPayment.currency).toUpperCase() !==
-                    String(intent.currency).toUpperCase()
+                String(intent.currency).toUpperCase()
             ) {
                 console.error(
                     "Airwallex payment currency mismatch.",
@@ -488,6 +514,67 @@ export const handlePaymentSuccess = async (req, res) => {
             console.log(
                 `Duplicate webhook ignored: ${event.id}`
             );
+
+            return res.sendStatus(200);
+        }
+
+        // A failed attempt is not necessarily a terminal intent.
+        // Our business rule is to close this checkout by cancelling
+        // the intent, unless the intent has already succeeded.
+        if (event.name === FAILED_EVENT) {
+            const currentIntent = await retrievePaymentIntent(intentId);
+
+            let currentStatus = String(
+                currentIntent?.status || ""
+            ).toUpperCase();
+
+            if (currentStatus === "SUCCEEDED") {
+                // A retry may have succeeded before this failure event
+                // was processed. Never cancel a successful payment.
+                console.warn(
+                    "Ignoring stale payment failure because the intent succeeded:",
+                    intentId
+                );
+            } else if (currentStatus !== "CANCELLED") {
+                const cancelResult =
+                    await cancelAirwallexPaymentIntent(intentId);
+
+                let cancelStatus = String(
+                    cancelResult?.status || ""
+                ).toUpperCase();
+
+                // Verify cancellation if the response does not explicitly
+                // confirm that the intent is CANCELLED.
+                if (cancelStatus !== "CANCELLED") {
+                    const verifiedIntent =
+                        await retrievePaymentIntent(intentId);
+
+                    cancelStatus = String(
+                        verifiedIntent?.status || ""
+                    ).toUpperCase();
+                }
+
+                if (cancelStatus !== "CANCELLED") {
+                    throw new Error(
+                        `Airwallex did not confirm cancellation for intent ${intentId}.`
+                    );
+                }
+
+                console.log(
+                    "Airwallex PaymentIntent cancelled after failed attempt:",
+                    intentId
+                );
+            }
+
+            // Record this failure event only after handling it successfully.
+            await insertProcessedEvent(
+                client,
+                event,
+                intentId
+            );
+
+            await client.query("COMMIT");
+            transactionOpen = false;
 
             return res.sendStatus(200);
         }
