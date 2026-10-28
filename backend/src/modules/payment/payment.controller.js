@@ -1,5 +1,9 @@
 import { db } from "../../db/index.js";
-import { createPaymentIntent } from "./payment.service.js";
+import {
+  createPaymentIntent,
+  retrievePaymentIntent,
+  cancelAirwallexPaymentIntent
+} from "./payment.service.js";
 // import { POS } from "../../adapters/pos.adapter.js";
 import {
   getRaptorBill,
@@ -9,6 +13,11 @@ import {
   getRaptorEReceipt,
 } from "../../services/raptor.service.js";
 import { syncRaptorBill } from "../../services/billSync.service.js";
+import {
+  claimPayment,
+  attachPaymentIntent,
+  failPaymentClaim,
+} from "./paymentLock.service.js";
 
 export const getReceipt = async (req, res) => {
   try {
@@ -283,7 +292,7 @@ export const getReceipt = async (req, res) => {
 //       },
 //       tipAmount
 //     );
-    
+
 //     // ---------------------------------------------------------
 //     // 5. Save PENDING payment
 //     // ---------------------------------------------------------
@@ -427,7 +436,81 @@ export const createPayment = async (req, res) => {
       });
     }
 
-    // 6. Recall the exact Raptor table, sale and split.
+    // ---------------------------------------------------------
+    // 6. Calculate payment from outstanding balance plus tip.
+    // ---------------------------------------------------------
+
+    const totalAmount = Number(
+      (balance + tipAmount).toFixed(2)
+    );
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      return res.status(409).json({
+        error: "Invalid payment amount.",
+        code: "INVALID_PAYMENT_AMOUNT",
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 7. ATOMICALLY CLAIM THE BILL
+    //
+    // This MUST happen before:
+    //
+    //   - recallRaptorTable()
+    //   - createPaymentIntent()
+    //
+    // The database unique partial index guarantees that only
+    // one PENDING payment can exist for this bill.
+    // ---------------------------------------------------------
+
+    const claim = await claimPayment({
+      billId: dbBillId,
+      receiptNo: bill.receipt_no,
+      amount: totalAmount,
+      tip: tipAmount,
+      currency: bill.currency,
+      provider: "AIRWALLEX",
+    });
+
+    // Another customer already owns this checkout.
+    if (!claim.acquired) {
+      console.log(
+        "Checkout already in progress for bill:",
+        {
+          billId: dbBillId,
+          receiptNo: bill.receipt_no,
+          existingPaymentId:
+            claim.payment?.id || null,
+          existingIntentId:
+            claim.payment?.intent_id || null,
+        }
+      );
+
+      return res.status(409).json({
+        error:
+          "A payment is already in progress for this bill.",
+        code: "CHECKOUT_IN_PROGRESS",
+        receipt_no: bill.receipt_no,
+      });
+    }
+
+    // This payment row now owns the checkout.
+    const paymentAttempt = claim.payment;
+
+    console.log(
+      "Payment checkout claimed:",
+      {
+        paymentId: paymentAttempt.id,
+        billId: dbBillId,
+        receiptNo: bill.receipt_no,
+        amount: totalAmount,
+      }
+    );
+
+    // ---------------------------------------------------------
+    // 8. Recall the exact Raptor table, sale and split.
+    // ---------------------------------------------------------
+
     recallDetails = {
       outletUuid,
       tableNo: String(bill.table_id),
@@ -435,51 +518,75 @@ export const createPayment = async (req, res) => {
       splitNo: Number(bill.splitno || 0),
     };
 
-    await recallRaptorTable(recallDetails);
-    recalled = true;
+    try {
+      await recallRaptorTable(recallDetails);
+      recalled = true;
+    } catch (err) {
+      // We successfully claimed the payment locally,
+      // but Raptor recall failed.
+      //
+      // Release the claim so another customer can retry.
+      await failPaymentClaim({
+        paymentId: paymentAttempt.id,
+        status: "FAILED",
+      });
 
-    // 7. Calculate payment from outstanding balance plus tip.
-    const totalAmount = Number(
-      (balance + tipAmount).toFixed(2)
-    );
+      throw err;
+    }
 
-    // 8. Create the Airwallex PaymentIntent.
-    const intent = await createPaymentIntent(
-      {
-        ...bill,
-        total: totalAmount,
-        currency: bill.currency,
-      },
-      tipAmount
-    );
+    // ---------------------------------------------------------
+    // 9. Create the Airwallex PaymentIntent.
+    //
+    // IMPORTANT:
+    // paymentAttempt.id is used as the stable request_id.
+    // ---------------------------------------------------------
 
-    // 9. Save the payment attempt as PENDING.
-    await db.query(
-      `
-      INSERT INTO public.payments
-      (
-        bill_id,
-        receipt_no,
-        amount,
-        tip,
-        currency,
-        status,
-        provider,
-        intent_id
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `,
-      [
-        dbBillId,
-        bill.receipt_no,
-        totalAmount,
+    let intent;
+
+    try {
+      intent = await createPaymentIntent(
+        {
+          ...bill,
+          total: totalAmount,
+          currency: bill.currency,
+        },
         tipAmount,
-        bill.currency,
-        "PENDING",
-        "AIRWALLEX",
-        intent.id,
-      ]
+        `payattable-payment-${paymentAttempt.id}`
+      );
+    } catch (err) {
+      // Airwallex intent creation failed.
+      //
+      // No customer has been sent to the gateway yet,
+      // so it is safe to release the local checkout claim.
+      await failPaymentClaim({
+        paymentId: paymentAttempt.id,
+        status: "FAILED",
+      });
+
+      throw err;
+    }
+
+    // ---------------------------------------------------------
+    // 10. Attach Airwallex intent to our existing payment row.
+    // ---------------------------------------------------------
+
+    const savedPayment = await attachPaymentIntent({
+      paymentId: paymentAttempt.id,
+      intentId: intent.id,
+    });
+
+    console.log(
+      "Airwallex intent attached:",
+      {
+        paymentId: savedPayment.id,
+        intentId: savedPayment.intent_id,
+        receiptNo: bill.receipt_no,
+      }
     );
+
+    // ---------------------------------------------------------
+    // 11. Return PaymentIntent details to frontend.
+    // ---------------------------------------------------------
 
     return res.json({
       intent_id: intent.id,
@@ -537,18 +644,175 @@ export const createPayment = async (req, res) => {
   }
 };
 
+export const cancelPaymentIntentForCheckout = async (req, res) => {
+  const { intentId, outletUuid, tableId } = req.body ?? {};
+
+  if (!intentId || !outletUuid || !tableId) {
+    return res.status(400).json({
+      error: "Intent ID, outlet UUID and table ID are required.",
+      code: "INVALID_CANCELLATION_REQUEST",
+    });
+  }
+
+  try {
+    // Verify that this intent belongs to this outlet and table.
+    const paymentResult = await db.query(
+      `
+      SELECT p.id, p.intent_id, p.status, p.provider
+      FROM public.payments p
+      JOIN public.bills b ON b.id = p.bill_id
+      WHERE p.intent_id = $1
+        AND p.provider = 'AIRWALLEX'
+        AND b.outletuuid = $2
+        AND CAST(b.table_id AS TEXT) = $3
+      LIMIT 1
+      `,
+      [intentId, outletUuid, String(tableId)]
+    );
+
+    if (!paymentResult.rows.length) {
+      return res.status(404).json({
+        error: "Payment intent was not found for this table.",
+        code: "PAYMENT_NOT_FOUND",
+      });
+    }
+
+    const payment = paymentResult.rows[0];
+
+    if (String(payment.status).toUpperCase() === "PAID") {
+      return res.status(409).json({
+        error: "This payment has already been completed.",
+        code: "PAYMENT_ALREADY_SUCCEEDED",
+      });
+    }
+
+    // Check Airwallex's latest status before requesting cancellation.
+    let intent = await retrievePaymentIntent(intentId);
+    let providerStatus = String(intent?.status || "").toUpperCase();
+
+    if (providerStatus === "SUCCEEDED") {
+      return res.status(409).json({
+        error: "Payment has already succeeded. Confirming the result.",
+        code: "PAYMENT_ALREADY_SUCCEEDED",
+      });
+    }
+
+    // An already-cancelled intent requires no new cancellation request.
+    if (providerStatus !== "CANCELLED") {
+      try {
+        await cancelAirwallexPaymentIntent(intentId);
+      } catch (cancelError) {
+        // A payment can change state while cancellation is in flight.
+        // Re-read its state before deciding what happened.
+        intent = await retrievePaymentIntent(intentId);
+        providerStatus = String(
+          intent?.status || ""
+        ).toUpperCase();
+
+        if (
+          providerStatus !== "CANCELLED" &&
+          providerStatus !== "SUCCEEDED"
+        ) {
+          throw cancelError;
+        }
+      }
+
+      // Verify the provider's final state.
+      if (
+        providerStatus !== "CANCELLED" &&
+        providerStatus !== "SUCCEEDED"
+      ) {
+        intent = await retrievePaymentIntent(intentId);
+        providerStatus = String(
+          intent?.status || ""
+        ).toUpperCase();
+      }
+    }
+
+    if (providerStatus === "SUCCEEDED") {
+      return res.status(409).json({
+        error: "Payment has already succeeded. Confirming the result.",
+        code: "PAYMENT_ALREADY_SUCCEEDED",
+      });
+    }
+
+    if (providerStatus !== "CANCELLED") {
+      return res.status(202).json({
+        success: true,
+        status: providerStatus || "PENDING",
+        message: "Cancellation is awaiting confirmation.",
+      });
+    }
+
+    console.log(
+      "Airwallex cancellation confirmed; waiting for webhook processing:",
+      intentId
+    );
+
+    // The cancellation webhook remains responsible for the
+    // local CANCELLED status and Raptor table restoration.
+    return res.status(202).json({
+      success: true,
+      status: "CANCELLED",
+      message: "Cancellation confirmed; finalising checkout.",
+    });
+  } catch (error) {
+    console.error(
+      "PaymentIntent cancellation request failed:",
+      error.response?.data || error.message
+    );
+
+    return res.status(502).json({
+      error: "Unable to confirm payment cancellation.",
+      code: "CANCELLATION_REQUEST_FAILED",
+    });
+  }
+};
 
 export const getPaymentStatus = async (req, res) => {
-  const { billId } = req.query;
+  try {
+    const { intentId, billId } = req.query;
 
-  const result = await db.query(
-    `SELECT status FROM payments
-     WHERE receipt_no=$1
-     ORDER BY id DESC LIMIT 1`,
-    [billId]
-  );
+    if (intentId) {
+      const result = await db.query(
+        `
+        SELECT status
+        FROM public.payments
+        WHERE intent_id = $1
+        LIMIT 1
+        `,
+        [intentId]
+      );
 
-  res.json(result.rows[0] || { status: "PENDING" });
+      return res.json(result.rows[0] || { status: "PENDING" });
+    }
+
+    // Backwards compatibility for callers that still use billId.
+    if (billId) {
+      const result = await db.query(
+        `
+        SELECT status
+        FROM public.payments
+        WHERE receipt_no = $1
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+        [billId]
+      );
+
+      return res.json(result.rows[0] || { status: "PENDING" });
+    }
+
+    return res.status(400).json({
+      error: "Payment intent ID is required.",
+    });
+  } catch (err) {
+    console.error("Payment status lookup failed:", err.message);
+
+    return res.status(500).json({
+      error: "Unable to retrieve payment status.",
+    });
+  }
 };
 
 export const getEReceipt = async (req, res) => {
@@ -577,3 +841,4 @@ export const getEReceipt = async (req, res) => {
     });
   }
 };
+

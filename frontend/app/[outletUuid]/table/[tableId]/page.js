@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getBill, createPayment } from "@/services/api";
+import { getBill, createPayment, requestPaymentCancellation } from "@/services/api";
 import DropIn from "@/components/DropIn";
 import { getSymbol } from "@/services/helper";
 import ProcessingScreen from "@/components/ProcessingScreen";
@@ -42,12 +42,14 @@ export default function Page() {
   const [noItems, setNoItems] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [paymentErrorCode, setPaymentErrorCode] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const cancellationInFlightRef = useRef(false);
 
   const symbol = getSymbol(currency);
 
   useEffect(() => {
     if (!paymentError) return;
-  
+
     paymentErrorRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "center",
@@ -295,6 +297,63 @@ export default function Page() {
       });
     }
   };
+
+  const handleCancelPayment = async () => {
+    if (!intentId || !bill || cancellationInFlightRef.current) {
+      return;
+    }
+
+    cancellationInFlightRef.current = true;
+    setCancelling(true);
+
+    try {
+      await requestPaymentCancellation({
+        intentId,
+        outletUuid: params.outletUuid,
+        tableId: params.tableId,
+        receiptNo: bill.receipt_no,
+      });
+
+      toast.info("Cancellation requested", {
+        description: "Waiting for Airwallex to confirm the cancellation.",
+      });
+
+      // The webhook determines the final local payment status.
+      startPollingStatus(intentId);
+    } catch (error) {
+      cancellationInFlightRef.current = false;
+      setCancelling(false);
+
+      if (error.code === "PAYMENT_ALREADY_SUCCEEDED") {
+        setProcessingSuccess(true);
+        startPollingStatus(intentId);
+
+        toast.info("Checking payment status", {
+          description: "The payment may already have succeeded. Please wait for confirmation.",
+        });
+
+        return;
+      }
+
+      if (error.code === "PAYMENT_NOT_CANCELLABLE") {
+        // Do not start another payment while this one is processing.
+        setProcessingSuccess(true);
+        startPollingStatus(intentId);
+
+        toast.info("Payment is still processing", {
+          description: "We are checking the final payment status.",
+        });
+
+        return;
+      }
+
+      toast.error("Unable to cancel payment", {
+        description:
+          error.message || "Please check the payment status or ask staff for help.",
+      });
+    }
+  };
+
 
   /* =========================================
    NO ITEMS UI
@@ -689,44 +748,58 @@ export default function Page() {
                     : `Pay ${symbol} ${totalWithTip}`}
                 </button>
               ) : (
-                <div className="relative min-h-[220px]">
+                <div>
+                  <div className="relative min-h-[220px]">
 
-                  {/* Loader */}
-                  {dropinLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white rounded-xl z-10">
-                      <div className="w-32">
-                        <Lottie animationData={loadingAnim} loop />
-                        <p className="text-xs text-gray-400 text-center mt-2">
-                          Loading payment...
-                        </p>
+                    {/* Loader */}
+                    {dropinLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white rounded-xl z-10">
+                        <div className="w-32">
+                          <Lottie animationData={loadingAnim} loop />
+                          <p className="text-xs text-gray-400 text-center mt-2">
+                            Loading payment...
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <DropIn
-                    intentId={intentId}
-                    total={totalWithTip}
-                    tip={Number(tip)}
-                    tableId={params.tableId}
-                    clientSecret={clientSecret}
-                    currency={currency}
+                    <DropIn
+                      intentId={intentId}
+                      total={totalWithTip}
+                      tip={Number(tip)}
+                      tableId={params.tableId}
+                      clientSecret={clientSecret}
+                      currency={currency}
+                      onCancel={handleCancelPayment}
 
 
-                    onReady={() => {
-                      setTimeout(() => {
-                        setProcessing(false);
-                        setDropinLoading(false);
-                      }, 300);
-                    }}
+                      onReady={() => {
+                        setTimeout(() => {
+                          setProcessing(false);
+                          setDropinLoading(false);
+                        }, 300);
+                      }}
 
-                    onSuccess={() => {
-                      // 🔥 NO confirmPayment call here
-                      setProcessingSuccess(true);
+                      onSuccess={() => {
+                        // 🔥 NO confirmPayment call here
+                        setProcessingSuccess(true);
 
-                      // start polling backend
-                      startPollingStatus();
-                    }}
-                  />
+                        // start polling backend
+                        startPollingStatus();
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelPayment}
+                    disabled={cancelling || processingSuccess || showFinalSuccess}
+                    className="mt-3 w-full rounded-2xl border border-gray-300
+                 bg-white py-3 text-sm font-semibold text-gray-700
+                 transition hover:bg-gray-50 disabled:cursor-not-allowed
+                 disabled:opacity-50"
+                  >
+                    {cancelling ? "Cancelling payment..." : "Cancel Payment"}
+                  </button>
                 </div>
               )}
             </>
@@ -734,54 +807,54 @@ export default function Page() {
             <SuccessPage receiptNo={bill.receipt_no} />
           )}
           {paymentError && !processingSuccess && !showFinalSuccess && (
-          <div
-            role="alert"
-            ref={paymentErrorRef}
-            aria-live="assertive"
-            className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 sm:mx-5"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                className="h-5 w-5"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="9" />
-                <path
-                  d="M12 8v4m0 4h.01"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
+            <div
+              role="alert"
+              ref={paymentErrorRef}
+              aria-live="assertive"
+              className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 sm:mx-5"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path
+                    d="M12 8v4m0 4h.01"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
 
-            <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold text-red-900 sm:text-base">
-                {paymentErrorCode === "TABLE_BUSY"
-                  ? "Table unavailable"
-                  : paymentErrorCode === "BILL_CHANGED"
-                    ? "Bill changed"
-                    : paymentErrorCode === "BILL_ALREADY_PAID"
-                      ? "Bill already paid"
-                      : "Payment needs attention"}
-              </h3>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold text-red-900 sm:text-base">
+                  {paymentErrorCode === "TABLE_BUSY"
+                    ? "Table unavailable"
+                    : paymentErrorCode === "BILL_CHANGED"
+                      ? "Bill changed"
+                      : paymentErrorCode === "BILL_ALREADY_PAID"
+                        ? "Bill already paid"
+                        : "Payment needs attention"}
+                </h3>
 
-              <p className="mt-1 break-words text-sm leading-5 text-red-700">
-                {paymentError}
-              </p>
-
-              {paymentErrorCode === "TABLE_BUSY" && (
-                <p className="mt-2 text-xs leading-5 text-red-800">
-                  Please ask a staff member to release the table before trying again.
+                <p className="mt-1 break-words text-sm leading-5 text-red-700">
+                  {paymentError}
                 </p>
-              )}
+
+                {paymentErrorCode === "TABLE_BUSY" && (
+                  <p className="mt-2 text-xs leading-5 text-red-800">
+                    Please ask a staff member to release the table before trying again.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
-        
+
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import axios from "axios";
 import { randomUUID } from "node:crypto";
 import { getAirwallexToken } from "../../config/airwallex.js";
 
-export const createPaymentIntent = async (bill, tip) => {
+export const createPaymentIntent = async (bill, tip, requestId) => {
   const token = await getAirwallexToken();
 
   const amount = Number(bill.total);
@@ -13,7 +13,7 @@ export const createPaymentIntent = async (bill, tip) => {
 
   const payload = {
     // request_id: `req_${Date.now()}`,
-    request_id: randomUUID(),
+    request_id: requestId || randomUUID(),
 
     // ✅ FIXED
     amount: amount,

@@ -1,8 +1,24 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-export default function DropIn({ intentId, clientSecret, currency, onSuccess, total, onReady, tableId, tip }) {
+export default function DropIn({ 
+  intentId, 
+  clientSecret, 
+  currency, 
+  onSuccess,
+  onCancel, 
+  total, 
+  onReady, 
+  tableId, 
+  tip 
+}) {
+  const onCancelRef = useRef(onCancel);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
   useEffect(() => {
     if (!intentId || !clientSecret) return;
 
@@ -36,6 +52,12 @@ export default function DropIn({ intentId, clientSecret, currency, onSuccess, to
           // setTimeout(() => {
           //   window.location.href = `/success?amount=${total}&currency=${currency}&tableId=${tableId}&tip=${tip}`;
           // }, 1500);
+          });
+
+          dropIn.on("cancel", () => {
+            console.log("Airwallex Drop-in cancellation event received.");
+          
+            onCancelRef.current?.();
           });
 
       } catch (err) {

@@ -73,3 +73,36 @@ export const getReceipt = async (receiptNo) => {
 
   return res.json();
 };
+
+export const requestPaymentCancellation = async ({
+  intentId,
+  outletUuid,
+  tableId,
+}) => {
+  const res = await fetch(`${BASE}/payment/cancel`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      intentId,
+      outletUuid,
+      tableId,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const error = new Error(
+      data?.error || "Unable to cancel payment."
+    );
+
+    error.status = res.status;
+    error.code = data?.code;
+
+    throw error;
+  }
+
+  return data;
+};
