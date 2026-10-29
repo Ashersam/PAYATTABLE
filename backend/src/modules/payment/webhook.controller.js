@@ -15,7 +15,6 @@ import {
 
 const SUPPORTED_EVENTS = new Set([
     "payment_intent.succeeded",
-    "payment_intent.payment_failed",
     "payment_intent.cancelled",
     "payment_intent.canceled",
 ]);
@@ -197,10 +196,7 @@ async function handleFailedOrCancelled({
     payment,
     bill,
 }) {
-    const targetStatus =
-        event.name === FAILED_EVENT
-            ? "FAILED"
-            : "CANCELLED";
+    const targetStatus = "CANCELLED";
 
     // Never hold a bill that has already been paid.
     const alreadyPaid = await client.query(

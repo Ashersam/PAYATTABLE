@@ -104,29 +104,33 @@ export const claimPayment = async ({
  * local payment attempt.
  */
 export const attachPaymentIntent = async ({
-  paymentId,
-  intentId,
-}) => {
-  const result = await db.query(
-    `
-    UPDATE public.payments
-    SET intent_id = $1
-    WHERE id = $2
-      AND status = 'PENDING'
-      AND intent_id IS NULL
-    RETURNING *
-    `,
-    [intentId, paymentId]
-  );
-
-  if (!result.rows.length) {
-    throw new Error(
-      `Unable to attach Airwallex intent to payment ${paymentId}`
+    paymentId,
+    intentId,
+  }) => {
+    const result = await db.query(
+      `
+      UPDATE public.payments
+      SET intent_id = $1,
+          checkout_started_at = NOW(),
+          last_reconciled_at = NULL,
+          reconciliation_attempts = 0,
+          updated_at = NOW()
+      WHERE id = $2
+        AND status = 'PENDING'
+        AND intent_id IS NULL
+      RETURNING *
+      `,
+      [intentId, paymentId]
     );
-  }
-
-  return result.rows[0];
-};
+  
+    if (!result.rows.length) {
+      throw new Error(
+        `Unable to attach Airwallex intent to payment ${paymentId}`
+      );
+    }
+  
+    return result.rows[0];
+  };
 
 /**
  * Release a payment claim when PaymentIntent creation fails

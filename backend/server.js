@@ -7,6 +7,9 @@ import rateLimit from "express-rate-limit";
 import billRoutes from "./src/modules/bill/bill.routes.js";
 import paymentRoutes from "./src/modules/payment/payment.routes.js";
 import raptorRoutes from "./src/routes/raptor.routes.js";
+import {
+  startPaymentReconciliation,
+} from "./src/modules/payment/paymentReconciliation.service.js";
 
 
 dotenv.config();
@@ -46,6 +49,8 @@ app.use("/payment/webhook", rateLimit({
 app.use("/bill", billRoutes);
 app.use("/payment", paymentRoutes);
 
-app.listen(process.env.PORT, () =>
-  console.log(`Server running on ${process.env.PORT}`)
-);
+app.listen(process.env.PORT, () => {
+  console.log(`Server running on ${process.env.PORT}`);
+
+  startPaymentReconciliation();
+});

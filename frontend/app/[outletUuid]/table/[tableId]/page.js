@@ -133,14 +133,14 @@ export default function Page() {
   }, []);
 
 
-  const startPollingStatus = () => {
-    if (pollingRef.current) return;
+  const startPollingStatus = (paymentIntentId = intentId) => {
+    if (!paymentIntentId || pollingRef.current) return;
 
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/payment/status?billId=${encodeURIComponent(
-            bill.receipt_no
+          `${process.env.NEXT_PUBLIC_API_URL}/payment/status?intentId=${encodeURIComponent(
+            paymentIntentId
           )}`
         );
 
@@ -248,7 +248,7 @@ export default function Page() {
       setCurrency(res.currency || bill.currency);
 
       // Watch for webhook-confirmed success, failure or cancellation.
-      startPollingStatus();
+      startPollingStatus(res.intent_id);
 
     } catch (error) {
       setProcessing(false);
@@ -785,7 +785,7 @@ export default function Page() {
                         setProcessingSuccess(true);
 
                         // start polling backend
-                        startPollingStatus();
+                        startPollingStatus(intentId);
                       }}
                     />
                   </div>
