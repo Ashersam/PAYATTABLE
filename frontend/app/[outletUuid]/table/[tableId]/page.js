@@ -158,6 +158,8 @@ export default function Page() {
           setProcessingSuccess(false);
           setShowFinalSuccess(true);
           setIsPaid(true);
+          setCancelling(false);
+          cancellationInFlightRef.current = false;
 
           return;
         }
@@ -166,6 +168,10 @@ export default function Page() {
         if (["FAILED", "CANCELLED", "EXPIRED"].includes(status)) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
+
+          // Reset cancellation state after checkout terminates.
+          setCancelling(false);
+          cancellationInFlightRef.current = false;
 
           setProcessingSuccess(false);
           setShowFinalSuccess(false);
