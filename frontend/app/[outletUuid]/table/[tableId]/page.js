@@ -44,6 +44,8 @@ export default function Page() {
   const [paymentErrorCode, setPaymentErrorCode] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const cancellationInFlightRef = useRef(false);
+  const [checkoutWaitSeconds, setCheckoutWaitSeconds] = useState(null);
+  const [checkoutTimeoutType, setCheckoutTimeoutType] = useState(null);
   const tipSelectionDisabled = processing || Boolean(intentId);
 
   const symbol = getSymbol(currency);
@@ -134,7 +136,46 @@ export default function Page() {
   }, []);
 
 
+  const formatWaitTime = (seconds) => {
+    const total = Math.max(0, Math.ceil(Number(seconds) || 0));
+
+    const minutes = Math.floor(total / 60);
+    const remaining = total % 60;
+
+    if (minutes === 0) {
+      return `${remaining} sec`;
+    }
+
+    if (remaining === 0) {
+      return `${minutes} min`;
+    }
+
+    return `${minutes} min ${remaining} sec`;
+  };
+
+  useEffect(() => {
+    if (
+      checkoutWaitSeconds === null ||
+      checkoutWaitSeconds <= 0
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setCheckoutWaitSeconds((current) =>
+        current === null
+          ? null
+          : Math.max(0, current - 1)
+      );
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [checkoutWaitSeconds]);
+
   const startPollingStatus = (paymentIntentId = intentId) => {
+    setCheckoutWaitSeconds(null);
+    setCheckoutTimeoutType(null);
+    
     if (!paymentIntentId || pollingRef.current) return;
 
     pollingRef.current = setInterval(async () => {
@@ -224,6 +265,8 @@ export default function Page() {
       setPaymentError("");
       setPaymentErrorCode("");
       setProcessing(true);
+      setCheckoutWaitSeconds(null);
+      setCheckoutTimeoutType(null);
 
       // const res = await createPayment({
       //   billId: bill.receipt_no,
@@ -261,6 +304,29 @@ export default function Page() {
       setProcessing(false);
       const code = error?.code;
 
+      if (code === "CHECKOUT_IN_PROGRESS") {
+        setPaymentErrorCode("CHECKOUT_IN_PROGRESS");
+
+        setCheckoutTimeoutType(error.timeoutType || null);
+
+        setCheckoutWaitSeconds(
+          Number.isFinite(error.remainingSeconds)
+            ? Math.max(0, error.remainingSeconds)
+            : null
+        );
+
+        setPaymentError(
+          error.message ||
+          "A payment is already in progress for this bill."
+        );
+
+        // Monitor the existing payment automatically.
+        if (error.intentId) {
+          startPollingStatus(error.intentId);
+        }
+
+        return;
+      }
       // These errors require the customer's attention.
       const persistentErrorCodes = [
         "TABLE_BUSY",
@@ -729,7 +795,7 @@ export default function Page() {
           symbol={symbol}
         />
 
-        <TipSelector total={subtotal} tip={tip} setTip={setTip} disabled={tipSelectionDisabled}/>
+        <TipSelector total={subtotal} tip={tip} setTip={setTip} disabled={tipSelectionDisabled} />
         {/* TOTAL SECTION */}
         <div className="px-5 mt-2 py-4 border-t bg-white">
 
@@ -837,27 +903,97 @@ export default function Page() {
                 </svg>
               </div>
 
+
               <div className="min-w-0 flex-1">
+
+                {/* ERROR HEADING */}
                 <h3 className="text-sm font-semibold text-red-900 sm:text-base">
-                  {paymentErrorCode === "TABLE_BUSY"
-                    ? "Table unavailable"
-                    : paymentErrorCode === "BILL_CHANGED"
-                      ? "Bill changed"
-                      : paymentErrorCode === "BILL_ALREADY_PAID"
-                        ? "Bill already paid"
-                        : "Payment needs attention"}
+                  {paymentErrorCode === "CHECKOUT_IN_PROGRESS"
+                    ? "Payment already in progress"
+                    : paymentErrorCode === "TABLE_BUSY"
+                      ? "Table unavailable"
+                      : paymentErrorCode === "BILL_CHANGED"
+                        ? "Bill changed"
+                        : paymentErrorCode === "BILL_ALREADY_PAID"
+                          ? "Bill already paid"
+                          : "Payment needs attention"}
                 </h3>
 
+                {/* ERROR MESSAGE */}
                 <p className="mt-1 break-words text-sm leading-5 text-red-700">
-                  {paymentError}
+                  {paymentErrorCode === "CHECKOUT_IN_PROGRESS"
+                    ? "Another customer has already started a payment for this bill. Please wait while we verify its status."
+                    : paymentError}
                 </p>
 
+                {/* CHECKOUT COUNTDOWN */}
+                {paymentErrorCode === "CHECKOUT_IN_PROGRESS" && (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+
+                    {checkoutWaitSeconds !== null &&
+                      checkoutWaitSeconds > 0 ? (
+                      <>
+                        <p className="text-xs font-medium text-amber-800">
+                          {checkoutTimeoutType === "CLAIM"
+                            ? "Next payment preparation check"
+                            : "Next payment status check"}
+                        </p>
+
+                        <div className="mt-1 flex items-center gap-2">
+
+                          <svg
+                            className="h-5 w-5 text-amber-700"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            aria-hidden="true"
+                          >
+                            <circle cx="12" cy="12" r="9" />
+                            <path
+                              d="M12 7v5l3 2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+
+                          <span className="text-xl font-bold text-amber-900 tabular-nums">
+                            {formatWaitTime(checkoutWaitSeconds)}
+                          </span>
+
+                        </div>
+
+                        <p className="mt-2 text-xs leading-5 text-amber-800">
+                          Please wait while we check the existing payment.
+                          Do not submit another payment.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold text-amber-900">
+                          Payment status check is due
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-amber-800">
+                          We are waiting for the payment status to be verified.
+                          The bill will become available only after the existing
+                          checkout is confirmed as cancelled or failed.
+                        </p>
+                      </>
+                    )}
+
+                  </div>
+                )}
+
+                {/* TABLE BUSY MESSAGE */}
                 {paymentErrorCode === "TABLE_BUSY" && (
                   <p className="mt-2 text-xs leading-5 text-red-800">
                     Please ask a staff member to release the table before trying again.
                   </p>
                 )}
+
               </div>
+
             </div>
           )}
         </div>

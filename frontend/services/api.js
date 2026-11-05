@@ -40,10 +40,20 @@ export const createPayment = async (payload) => {
     const error = new Error(
       data?.error || "Payment creation failed"
     );
-
+  
     error.status = res.status;
     error.code = data?.code;
-
+  
+    error.remainingSeconds =
+      data?.remaining_seconds == null
+        ? null
+        : Number(data.remaining_seconds);
+  
+    error.timeoutType = data?.timeout_type;
+    error.timeoutMinutes = data?.timeout_minutes;
+    error.intentId = data?.intent_id;
+    error.nextCheckAt = data?.next_check_at;
+  
     throw error;
   }
 

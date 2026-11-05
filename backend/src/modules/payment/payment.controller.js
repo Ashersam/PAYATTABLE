@@ -474,23 +474,35 @@ export const createPayment = async (req, res) => {
 
     // Another customer already owns this checkout.
     if (!claim.acquired) {
+      const activePayment = claim.payment;
+    
       console.log(
-        "Checkout already in progress for bill:",
+        "Checkout already in progress:",
         {
           billId: dbBillId,
           receiptNo: bill.receipt_no,
-          existingPaymentId:
-            claim.payment?.id || null,
-          existingIntentId:
-            claim.payment?.intent_id || null,
+          existingPaymentId: activePayment?.id,
+          existingIntentId: activePayment?.intent_id,
+          timeoutType: activePayment?.timeout_type,
+          remainingSeconds: activePayment?.remaining_seconds,
         }
       );
-
+    
       return res.status(409).json({
-        error:
-          "A payment is already in progress for this bill.",
+        error: "A payment is already in progress for this bill.",
         code: "CHECKOUT_IN_PROGRESS",
         receipt_no: bill.receipt_no,
+    
+        intent_id: activePayment?.intent_id || null,
+    
+        timeout_type: activePayment?.timeout_type || null,
+        timeout_minutes: activePayment?.timeout_minutes || null,
+    
+        remaining_seconds:
+          activePayment?.remaining_seconds ?? null,
+    
+        next_check_at:
+          activePayment?.next_check_at || null,
       });
     }
 

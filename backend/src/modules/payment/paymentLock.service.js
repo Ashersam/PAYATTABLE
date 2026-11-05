@@ -4,21 +4,20 @@ import { db } from "../../db/index.js";
  * Atomically claim a bill for a new payment attempt.
  *
  * Only ONE PENDING payment is allowed per bill because of:
- *
  * ux_payments_one_pending_per_bill
  *
  * Returns:
- *   {
- *     acquired: true,
- *     payment
- *   }
+ * {
+ *   acquired: true,
+ *   payment
+ * }
  *
  * or:
  *
- *   {
- *     acquired: false,
- *     payment
- *   }
+ * {
+ *   acquired: false,
+ *   payment
+ * }
  */
 export const claimPayment = async ({
   billId,
@@ -29,6 +28,10 @@ export const claimPayment = async ({
   provider = "AIRWALLEX",
 }) => {
   try {
+    // --------------------------------------------------
+    // 1. Try to create a new payment claim.
+    // --------------------------------------------------
+
     const result = await db.query(
       `
       INSERT INTO public.payments
@@ -55,6 +58,7 @@ export const claimPayment = async ({
       ]
     );
 
+    // Successfully acquired the checkout.
     if (result.rows.length) {
       return {
         acquired: true,
@@ -62,9 +66,101 @@ export const claimPayment = async ({
       };
     }
 
-    // Another checkout already owns the bill.
+    // --------------------------------------------------
+    // 2. Another checkout already owns this bill.
+    //
+    // Retrieve its outlet-specific timeout settings
+    // and calculate when the next reconciliation check
+    // becomes eligible.
+    // --------------------------------------------------
+
     const existing = await db.query(
       `
+      WITH pending AS (
+        SELECT
+          p.*,
+
+          CASE
+            WHEN p.intent_id IS NULL THEN 'CLAIM'
+            ELSE 'CHECKOUT'
+          END AS timeout_type,
+
+          CASE
+            WHEN p.intent_id IS NULL
+              THEN COALESCE(
+                oc.payment_claim_timeout_minutes,
+                5
+              )
+            ELSE COALESCE(
+              oc.payment_checkout_timeout_minutes,
+              30
+            )
+          END AS timeout_minutes,
+
+          COALESCE(
+            oc.payment_reconciliation_retry_minutes,
+            5
+          ) AS retry_minutes,
+
+          CASE
+            WHEN p.intent_id IS NULL
+              THEN COALESCE(
+                p.updated_at,
+                p.created_at
+              )
+            ELSE COALESCE(
+              p.checkout_started_at,
+              p.created_at
+            )
+          END AS timer_started_at
+
+        FROM public.payments p
+
+        JOIN public.bills b
+          ON b.id = p.bill_id
+
+        LEFT JOIN public.outlet_config oc
+          ON oc.outletuuid = b.outletuuid
+
+        WHERE p.bill_id = $1
+          AND p.status = 'PENDING'
+
+        ORDER BY p.id DESC
+        LIMIT 1
+      ),
+
+      timed AS (
+        SELECT
+          *,
+          timer_started_at
+            + make_interval(
+                mins => timeout_minutes
+              ) AS timeout_at
+
+        FROM pending
+      ),
+
+      scheduled AS (
+        SELECT
+          *,
+
+          GREATEST(
+            timeout_at,
+
+            COALESCE(
+              last_reconciled_at
+                + make_interval(
+                    mins => retry_minutes
+                  ),
+
+              timeout_at
+            )
+
+          ) AS next_check_at
+
+        FROM timed
+      )
+
       SELECT
         id,
         bill_id,
@@ -74,20 +170,40 @@ export const claimPayment = async ({
         currency,
         status,
         provider,
-        intent_id
-      FROM public.payments
-      WHERE bill_id = $1
-        AND status = 'PENDING'
-      ORDER BY id DESC
-      LIMIT 1
+        intent_id,
+
+        timeout_type,
+        timeout_minutes,
+        retry_minutes,
+
+        timeout_at,
+        next_check_at,
+
+        GREATEST(
+          0,
+          CEIL(
+            EXTRACT(
+              EPOCH FROM (
+                next_check_at - NOW()
+              )
+            )
+          )::INTEGER
+        ) AS remaining_seconds
+
+      FROM scheduled
       `,
       [billId]
     );
+
+    // --------------------------------------------------
+    // 3. Return existing payment and countdown details.
+    // --------------------------------------------------
 
     return {
       acquired: false,
       payment: existing.rows[0] || null,
     };
+
   } catch (err) {
     console.error("Payment claim failed:", {
       message: err.message,
@@ -98,6 +214,7 @@ export const claimPayment = async ({
     throw err;
   }
 };
+
 
 /**
  * Attach the Airwallex PaymentIntent to our already-created
