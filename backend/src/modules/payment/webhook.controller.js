@@ -3,10 +3,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { db } from "../../db/index.js";
 
 import {
-    doRaptorPayment,
-    recallRaptorTable,
     holdRaptorTable,
 } from "../../services/raptor.service.js";
+
+import {
+    completeSuccessfulPayment,
+} from "./paymentCompletion.service.js";
 
 // import {
 //     retrievePaymentIntent,
@@ -336,6 +338,22 @@ export const handlePaymentSuccess = async (req, res) => {
             return res.status(400).send(
                 "Missing PaymentIntent ID"
             );
+        }
+
+        if (event.name === SUCCESS_EVENT) {
+            const result = await completeSuccessfulPayment({
+                intent,
+                event,
+            });
+
+            if (result.manualReview) {
+                console.error(
+                    "Successful payment requires manual review:",
+                    intentId
+                );
+            }
+
+            return res.sendStatus(200);
         }
 
         const isSuccessEvent =

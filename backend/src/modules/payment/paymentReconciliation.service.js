@@ -1,5 +1,7 @@
 import { db } from "../../db/index.js";
-
+import {
+  completeSuccessfulPayment,
+} from "./paymentCompletion.service.js";
 import {
   retrievePaymentIntent,
   cancelAirwallexPaymentIntent,
@@ -313,11 +315,27 @@ async function reconcileAttachedIntent(payment) {
   // A successful intent must never be cancelled or released
   // as an abandoned checkout. It needs success reconciliation.
   if (providerStatus === "SUCCEEDED") {
-    console.error(
-      "URGENT: Airwallex succeeded but local payment is PENDING. " +
-      "Keep the claim and reconcile payment success.",
+    console.log(
+      "Airwallex payment succeeded. Starting payment recovery:",
       payment.intent_id
     );
+  
+    const result = await completeSuccessfulPayment({
+      intent,
+    });
+  
+    if (result.manualReview) {
+      console.error(
+        "Payment requires manual reconciliation:",
+        payment.intent_id
+      );
+    } else {
+      console.log(
+        "Payment successfully recovered:",
+        payment.intent_id
+      );
+    }
+  
     return;
   }
 

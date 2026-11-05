@@ -44,6 +44,7 @@ export default function Page() {
   const [paymentErrorCode, setPaymentErrorCode] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const cancellationInFlightRef = useRef(false);
+  const tipSelectionDisabled = processing || Boolean(intentId);
 
   const symbol = getSymbol(currency);
 
@@ -728,7 +729,7 @@ export default function Page() {
           symbol={symbol}
         />
 
-        <TipSelector total={subtotal} tip={tip} setTip={setTip} />
+        <TipSelector total={subtotal} tip={tip} setTip={setTip} disabled={tipSelectionDisabled}/>
         {/* TOTAL SECTION */}
         <div className="px-5 mt-2 py-4 border-t bg-white">
 

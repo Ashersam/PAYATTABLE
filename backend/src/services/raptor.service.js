@@ -12,8 +12,7 @@ const readRaptorJson = async (response, operation) => {
 
   if (!response.ok) {
     throw new Error(
-      `${operation} failed (HTTP ${response.status}): ${
-        data.msg || data.detail || text
+      `${operation} failed (HTTP ${response.status}): ${data.msg || data.detail || text
       }`
     );
   }
@@ -199,7 +198,7 @@ export const getRaptorBill = async (
     const match = openTables.find(
       (entry) =>
         String(entry.tablename ?? entry.tableno) ===
-          String(tableNo) &&
+        String(tableNo) &&
         String(entry.salesno) === String(salesNo)
     );
 
@@ -218,7 +217,7 @@ export const getRaptorBill = async (
     const candidates = openTables.filter(
       (entry) =>
         String(entry.tablename ?? entry.tableno) ===
-          String(tableNo) &&
+        String(tableNo) &&
         Number(entry.balance || 0) > 0
     );
 
@@ -512,21 +511,44 @@ export const doRaptorPayment = async ({
   //   "tipamount": 0.0
   // }
 
+
+  console.log(
+    "Raptor doPayment complete response:",
+    JSON.stringify(
+      {
+        request: payload,
+        response: data,
+      },
+      null,
+      2
+    )
+  );
+
   if (Number(data.errorcode) !== 1) {
-    throw new Error(
+    const error = new Error(
       `Raptor payment request failed: ${data.msg || "Unknown error"}`
     );
+
+    error.raptorResponse = data;
+    throw error;
   }
-  
-  if (
-    String(data.paymentmsg || "").trim().toLowerCase() !== "paid"
-  ) {
-    throw new Error(
-      `Raptor has not confirmed full payment: ${
-        data.paymentmsg || data.msg || "Unknown payment status"
+
+  const paymentMessage = String(
+    data.paymentmsg || ""
+  ).trim().toLowerCase();
+
+  if (paymentMessage !== "paid") {
+    const error = new Error(
+      `Raptor has not confirmed full payment: ${data.paymentmsg || data.msg || "Unknown payment status"
       }`
     );
+
+    error.raptorResponse = data;
+    error.raptorPayload = payload;
+
+    throw error;
   }
+
 
   return {
     success: true,
