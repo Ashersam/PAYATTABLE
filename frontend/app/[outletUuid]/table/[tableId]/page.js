@@ -47,6 +47,8 @@ export default function Page() {
   const [checkoutWaitSeconds, setCheckoutWaitSeconds] = useState(null);
   const [checkoutTimeoutType, setCheckoutTimeoutType] = useState(null);
   const tipSelectionDisabled = processing || Boolean(intentId);
+  const isCheckoutInProgress =
+    paymentErrorCode === "CHECKOUT_IN_PROGRESS";
 
   const symbol = getSymbol(currency);
 
@@ -173,9 +175,7 @@ export default function Page() {
   }, [checkoutWaitSeconds]);
 
   const startPollingStatus = (paymentIntentId = intentId) => {
-    setCheckoutWaitSeconds(null);
-    setCheckoutTimeoutType(null);
-    
+
     if (!paymentIntentId || pollingRef.current) return;
 
     pollingRef.current = setInterval(async () => {
@@ -202,7 +202,8 @@ export default function Page() {
           setIsPaid(true);
           setCancelling(false);
           cancellationInFlightRef.current = false;
-
+          setCheckoutWaitSeconds(null);
+          setCheckoutTimeoutType(null);
           return;
         }
 
@@ -214,7 +215,8 @@ export default function Page() {
           // Reset cancellation state after checkout terminates.
           setCancelling(false);
           cancellationInFlightRef.current = false;
-
+          setCheckoutWaitSeconds(null);
+          setCheckoutTimeoutType(null);
           setProcessingSuccess(false);
           setShowFinalSuccess(false);
           setProcessing(false);
@@ -879,123 +881,200 @@ export default function Page() {
           ) : (
             <SuccessPage receiptNo={bill.receipt_no} />
           )}
+
           {paymentError && !processingSuccess && !showFinalSuccess && (
             <div
-              role="alert"
+              role={isCheckoutInProgress ? "status" : "alert"}
+              aria-live={isCheckoutInProgress ? "polite" : "assertive"}
               ref={paymentErrorRef}
-              aria-live="assertive"
-              className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 sm:mx-5"
+              className={`mx-4 mt-4 rounded-2xl border p-4 shadow-sm sm:mx-5 ${isCheckoutInProgress
+                ? "border-amber-200 bg-white"
+                : "border-red-200 bg-red-50"
+                }`}
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  className="h-5 w-5"
-                  aria-hidden="true"
+              <div className="flex items-start gap-3">
+
+                {/* ICON */}
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isCheckoutInProgress
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-red-100 text-red-600"
+                    }`}
                 >
-                  <circle cx="12" cy="12" r="9" />
-                  <path
-                    d="M12 8v4m0 4h.01"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
+                  {isCheckoutInProgress ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-5 w-5"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path
+                        d="M12 7v5l3 2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-5 w-5"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path
+                        d="M12 8v4m0 4h.01"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  )}
+                </div>
 
+                <div className="min-w-0 flex-1">
 
-              <div className="min-w-0 flex-1">
+                  {/* HEADING */}
+                  <h3
+                    className={`text-sm font-semibold sm:text-base ${isCheckoutInProgress
+                      ? "text-gray-900"
+                      : "text-red-900"
+                      }`}
+                  >
+                    {isCheckoutInProgress
+                      ? "Payment already in progress"
+                      : paymentErrorCode === "TABLE_BUSY"
+                        ? "Table unavailable"
+                        : paymentErrorCode === "BILL_CHANGED"
+                          ? "Bill changed"
+                          : paymentErrorCode === "BILL_ALREADY_PAID"
+                            ? "Bill already paid"
+                            : "Payment needs attention"}
+                  </h3>
 
-                {/* ERROR HEADING */}
-                <h3 className="text-sm font-semibold text-red-900 sm:text-base">
-                  {paymentErrorCode === "CHECKOUT_IN_PROGRESS"
-                    ? "Payment already in progress"
-                    : paymentErrorCode === "TABLE_BUSY"
-                      ? "Table unavailable"
-                      : paymentErrorCode === "BILL_CHANGED"
-                        ? "Bill changed"
-                        : paymentErrorCode === "BILL_ALREADY_PAID"
-                          ? "Bill already paid"
-                          : "Payment needs attention"}
-                </h3>
+                  {/* DESCRIPTION */}
+                  <p
+                    className={`mt-1 text-sm leading-5 ${isCheckoutInProgress
+                      ? "text-gray-600"
+                      : "text-red-700"
+                      }`}
+                  >
+                    {isCheckoutInProgress
+                      ? "A checkout for this bill is already active. We are checking its payment status."
+                      : paymentError}
+                  </p>
 
-                {/* ERROR MESSAGE */}
-                <p className="mt-1 break-words text-sm leading-5 text-red-700">
-                  {paymentErrorCode === "CHECKOUT_IN_PROGRESS"
-                    ? "Another customer has already started a payment for this bill. Please wait while we verify its status."
-                    : paymentError}
-                </p>
+                  {/* CHECKOUT TIMER */}
+                  {isCheckoutInProgress && (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
 
-                {/* CHECKOUT COUNTDOWN */}
-                {paymentErrorCode === "CHECKOUT_IN_PROGRESS" && (
-                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                        {checkoutTimeoutType === "CLAIM"
+                          ? "Next payment preparation check"
+                          : "Next reconciliation check"}
+                      </p>
 
-                    {checkoutWaitSeconds !== null &&
-                      checkoutWaitSeconds > 0 ? (
-                      <>
-                        <p className="text-xs font-medium text-amber-800">
-                          {checkoutTimeoutType === "CLAIM"
-                            ? "Next payment preparation check"
-                            : "Next payment status check"}
+                      {checkoutWaitSeconds === null ? (
+                        <p className="mt-2 text-sm text-amber-900">
+                          Checking the payment schedule...
                         </p>
+                      ) : checkoutWaitSeconds > 0 ? (
+                        <>
+                          <div className="mt-2 flex items-center gap-2">
 
-                        <div className="mt-1 flex items-center gap-2">
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              className="h-5 w-5 text-amber-700"
+                              aria-hidden="true"
+                            >
+                              <circle cx="12" cy="12" r="9" />
+                              <path
+                                d="M12 7v5l3 2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
 
-                          <svg
-                            className="h-5 w-5 text-amber-700"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            aria-hidden="true"
-                          >
-                            <circle cx="12" cy="12" r="9" />
-                            <path
-                              d="M12 7v5l3 2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
+                            <span className="text-2xl font-bold tracking-tight text-amber-900 tabular-nums">
+                              {formatWaitTime(checkoutWaitSeconds)}
+                            </span>
 
-                          <span className="text-xl font-bold text-amber-900 tabular-nums">
-                            {formatWaitTime(checkoutWaitSeconds)}
-                          </span>
+                          </div>
+
+                          <p className="mt-2 text-xs leading-5 text-amber-800">
+                            Please wait while we verify the existing checkout.
+                            Do not submit another payment.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="flex items-start gap-3">
+
+                          {/* Animated verification indicator */}
+                          <div className="mt-0.5 shrink-0">
+                            <svg
+                              className="h-5 w-5 animate-spin text-amber-700"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              aria-hidden="true"
+                            >
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="9"
+                                stroke="currentColor"
+                                strokeOpacity="0.2"
+                                strokeWidth="3"
+                              />
+                              <path
+                                d="M21 12a9 9 0 0 0-9-9"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </div>
+
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-amber-900">
+                              Verifying your payment
+                            </p>
+
+                            <p className="mt-1 text-xs leading-5 text-amber-800">
+                              Checking for the payment status with
+                              our payment provider.
+                            </p>
+
+                            <p className="mt-2 text-xs font-medium text-amber-900">
+                              Please keep this page open. Do not attempt
+                              another payment.
+                            </p>
+                          </div>
 
                         </div>
+                      )}
 
-                        <p className="mt-2 text-xs leading-5 text-amber-800">
-                          Please wait while we check the existing payment.
-                          Do not submit another payment.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm font-semibold text-amber-900">
-                          Payment status check is due
-                        </p>
+                    </div>
+                  )}
 
-                        <p className="mt-1 text-xs leading-5 text-amber-800">
-                          We are waiting for the payment status to be verified.
-                          The bill will become available only after the existing
-                          checkout is confirmed as cancelled or failed.
-                        </p>
-                      </>
-                    )}
+                  {/* TABLE BUSY SUPPORT MESSAGE */}
+                  {paymentErrorCode === "TABLE_BUSY" && (
+                    <p className="mt-2 text-xs leading-5 text-red-800">
+                      This table is currently open on another POS.
+                      Please ask a staff member to release it.
+                    </p>
+                  )}
 
-                  </div>
-                )}
-
-                {/* TABLE BUSY MESSAGE */}
-                {paymentErrorCode === "TABLE_BUSY" && (
-                  <p className="mt-2 text-xs leading-5 text-red-800">
-                    Please ask a staff member to release the table before trying again.
-                  </p>
-                )}
-
+                </div>
               </div>
-
             </div>
           )}
+
         </div>
 
       </div>

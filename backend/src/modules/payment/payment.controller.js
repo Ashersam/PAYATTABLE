@@ -17,7 +17,39 @@ import {
   claimPayment,
   attachPaymentIntent,
   failPaymentClaim,
+  getPendingPaymentForCheckout,
 } from "./paymentLock.service.js";
+
+const respondCheckoutInProgress = (
+  res,
+  activePayment,
+  receiptNo
+) => {
+  console.log("Checkout already in progress:", {
+    paymentId: activePayment?.id,
+    receiptNo,
+    intentId: activePayment?.intent_id,
+    timeoutType: activePayment?.timeout_type,
+    remainingSeconds: activePayment?.remaining_seconds,
+  });
+
+  return res.status(409).json({
+    error: "A payment is already in progress for this bill.",
+    code: "CHECKOUT_IN_PROGRESS",
+    receipt_no: receiptNo,
+
+    intent_id: activePayment?.intent_id || null,
+
+    timeout_type: activePayment?.timeout_type || null,
+    timeout_minutes: activePayment?.timeout_minutes ?? null,
+
+    remaining_seconds:
+      activePayment?.remaining_seconds ?? null,
+
+    next_check_at:
+      activePayment?.next_check_at || null,
+  });
+};
 
 export const getReceipt = async (req, res) => {
   try {
@@ -378,6 +410,22 @@ export const createPayment = async (req, res) => {
       });
     }
 
+    // CHECK EXISTING CHECKOUT BEFORE CONTACTING RAPTOR
+
+    const activeCheckout = await getPendingPaymentForCheckout({
+      receiptNo: billId,
+      outletUuid,
+      tableId,
+    });
+    
+    if (activeCheckout) {
+      return respondCheckoutInProgress(
+        res,
+        activeCheckout,
+        billId
+      );
+    }
+
     // 2. Refresh the latest bill from the selected Raptor outlet.
     const raptorData = await getRaptorBill(
       tableId,
@@ -474,36 +522,28 @@ export const createPayment = async (req, res) => {
 
     // Another customer already owns this checkout.
     if (!claim.acquired) {
-      const activePayment = claim.payment;
-    
-      console.log(
-        "Checkout already in progress:",
-        {
-          billId: dbBillId,
-          receiptNo: bill.receipt_no,
-          existingPaymentId: activePayment?.id,
-          existingIntentId: activePayment?.intent_id,
-          timeoutType: activePayment?.timeout_type,
-          remainingSeconds: activePayment?.remaining_seconds,
-        }
+      return respondCheckoutInProgress(
+        res,
+        claim.payment,
+        bill.receipt_no
       );
     
-      return res.status(409).json({
-        error: "A payment is already in progress for this bill.",
-        code: "CHECKOUT_IN_PROGRESS",
-        receipt_no: bill.receipt_no,
+      // return res.status(409).json({
+      //   error: "A payment is already in progress for this bill.",
+      //   code: "CHECKOUT_IN_PROGRESS",
+      //   receipt_no: bill.receipt_no,
     
-        intent_id: activePayment?.intent_id || null,
+      //   intent_id: activePayment?.intent_id || null,
     
-        timeout_type: activePayment?.timeout_type || null,
-        timeout_minutes: activePayment?.timeout_minutes || null,
+      //   timeout_type: activePayment?.timeout_type || null,
+      //   timeout_minutes: activePayment?.timeout_minutes || null,
     
-        remaining_seconds:
-          activePayment?.remaining_seconds ?? null,
+      //   remaining_seconds:
+      //     activePayment?.remaining_seconds ?? null,
     
-        next_check_at:
-          activePayment?.next_check_at || null,
-      });
+      //   next_check_at:
+      //     activePayment?.next_check_at || null,
+      // });
     }
 
     // This payment row now owns the checkout.

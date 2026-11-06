@@ -19,6 +19,147 @@ import { db } from "../../db/index.js";
  *   payment
  * }
  */
+
+
+const getPendingPaymentDetails = async ({
+  billId = null,
+  receiptNo = null,
+  outletUuid = null,
+  tableId = null,
+}) => {
+  const byBillId = billId !== null && billId !== undefined;
+
+  // These SQL fragments are fixed internally, not supplied by the request.
+  const whereClause = byBillId
+    ? "p.bill_id = $1"
+    : `
+        p.receipt_no = $1
+        AND b.outletuuid = $2
+        AND CAST(b.table_id AS TEXT) = $3
+      `;
+
+  const values = byBillId
+    ? [billId]
+    : [receiptNo, outletUuid, String(tableId)];
+
+  const result = await db.query(
+    `
+    WITH pending AS (
+      SELECT
+        p.*,
+
+        CASE
+          WHEN p.intent_id IS NULL THEN 'CLAIM'
+          ELSE 'CHECKOUT'
+        END AS timeout_type,
+
+        CASE
+          WHEN p.intent_id IS NULL
+            THEN COALESCE(oc.payment_claim_timeout_minutes, 5)
+          ELSE COALESCE(oc.payment_checkout_timeout_minutes, 30)
+        END AS timeout_minutes,
+
+        COALESCE(
+          oc.payment_reconciliation_retry_minutes,
+          5
+        ) AS retry_minutes,
+
+        CASE
+          WHEN p.intent_id IS NULL
+            THEN COALESCE(p.updated_at, p.created_at)
+          ELSE COALESCE(p.checkout_started_at, p.created_at)
+        END AS timer_started_at
+
+      FROM public.payments p
+
+      JOIN public.bills b
+        ON b.id = p.bill_id
+
+      LEFT JOIN public.outlet_config oc
+        ON oc.outletuuid = b.outletuuid
+
+      WHERE p.status = 'PENDING'
+        AND ${whereClause}
+
+      ORDER BY p.id DESC
+      LIMIT 1
+    ),
+
+    timed AS (
+      SELECT
+        *,
+        timer_started_at
+          + make_interval(mins => timeout_minutes) AS timeout_at
+      FROM pending
+    ),
+
+    scheduled AS (
+      SELECT
+        *,
+        GREATEST(
+          timeout_at,
+          COALESCE(
+            last_reconciled_at
+              + make_interval(mins => retry_minutes),
+            timeout_at
+          )
+        ) AS next_check_at
+      FROM timed
+    )
+
+    SELECT
+      id,
+      bill_id,
+      receipt_no,
+      amount,
+      tip,
+      currency,
+      status,
+      provider,
+      intent_id,
+      timeout_type,
+      timeout_minutes,
+      retry_minutes,
+      timeout_at,
+      next_check_at,
+
+      GREATEST(
+        0,
+        CEIL(
+          EXTRACT(EPOCH FROM (next_check_at - NOW()))
+        )::INTEGER
+      ) AS remaining_seconds
+
+    FROM scheduled
+    `,
+    values
+  );
+
+  return result.rows[0] || null;
+};
+
+/**
+ * Check for an active checkout before contacting Raptor.
+ */
+export const getPendingPaymentForCheckout = async ({
+  receiptNo,
+  outletUuid,
+  tableId,
+}) => {
+  if (!receiptNo || !outletUuid || tableId == null) {
+    throw new Error(
+      "Receipt number, outlet UUID and table ID are required."
+    );
+  }
+
+  return getPendingPaymentDetails({
+    receiptNo,
+    outletUuid,
+    tableId,
+  });
+};
+
+
 export const claimPayment = async ({
   billId,
   receiptNo,
@@ -74,134 +215,13 @@ export const claimPayment = async ({
     // becomes eligible.
     // --------------------------------------------------
 
-    const existing = await db.query(
-      `
-      WITH pending AS (
-        SELECT
-          p.*,
-
-          CASE
-            WHEN p.intent_id IS NULL THEN 'CLAIM'
-            ELSE 'CHECKOUT'
-          END AS timeout_type,
-
-          CASE
-            WHEN p.intent_id IS NULL
-              THEN COALESCE(
-                oc.payment_claim_timeout_minutes,
-                5
-              )
-            ELSE COALESCE(
-              oc.payment_checkout_timeout_minutes,
-              30
-            )
-          END AS timeout_minutes,
-
-          COALESCE(
-            oc.payment_reconciliation_retry_minutes,
-            5
-          ) AS retry_minutes,
-
-          CASE
-            WHEN p.intent_id IS NULL
-              THEN COALESCE(
-                p.updated_at,
-                p.created_at
-              )
-            ELSE COALESCE(
-              p.checkout_started_at,
-              p.created_at
-            )
-          END AS timer_started_at
-
-        FROM public.payments p
-
-        JOIN public.bills b
-          ON b.id = p.bill_id
-
-        LEFT JOIN public.outlet_config oc
-          ON oc.outletuuid = b.outletuuid
-
-        WHERE p.bill_id = $1
-          AND p.status = 'PENDING'
-
-        ORDER BY p.id DESC
-        LIMIT 1
-      ),
-
-      timed AS (
-        SELECT
-          *,
-          timer_started_at
-            + make_interval(
-                mins => timeout_minutes
-              ) AS timeout_at
-
-        FROM pending
-      ),
-
-      scheduled AS (
-        SELECT
-          *,
-
-          GREATEST(
-            timeout_at,
-
-            COALESCE(
-              last_reconciled_at
-                + make_interval(
-                    mins => retry_minutes
-                  ),
-
-              timeout_at
-            )
-
-          ) AS next_check_at
-
-        FROM timed
-      )
-
-      SELECT
-        id,
-        bill_id,
-        receipt_no,
-        amount,
-        tip,
-        currency,
-        status,
-        provider,
-        intent_id,
-
-        timeout_type,
-        timeout_minutes,
-        retry_minutes,
-
-        timeout_at,
-        next_check_at,
-
-        GREATEST(
-          0,
-          CEIL(
-            EXTRACT(
-              EPOCH FROM (
-                next_check_at - NOW()
-              )
-            )
-          )::INTEGER
-        ) AS remaining_seconds
-
-      FROM scheduled
-      `,
-      [billId]
-    );
-
-    // --------------------------------------------------
-    // 3. Return existing payment and countdown details.
-    // --------------------------------------------------
+    const existingPayment = await getPendingPaymentDetails({
+      billId,
+    });
 
     return {
       acquired: false,
-      payment: existing.rows[0] || null,
+      payment: existingPayment,
     };
 
   } catch (err) {
@@ -221,11 +241,11 @@ export const claimPayment = async ({
  * local payment attempt.
  */
 export const attachPaymentIntent = async ({
-    paymentId,
-    intentId,
-  }) => {
-    const result = await db.query(
-      `
+  paymentId,
+  intentId,
+}) => {
+  const result = await db.query(
+    `
       UPDATE public.payments
       SET intent_id = $1,
           checkout_started_at = NOW(),
@@ -237,17 +257,17 @@ export const attachPaymentIntent = async ({
         AND intent_id IS NULL
       RETURNING *
       `,
-      [intentId, paymentId]
+    [intentId, paymentId]
+  );
+
+  if (!result.rows.length) {
+    throw new Error(
+      `Unable to attach Airwallex intent to payment ${paymentId}`
     );
-  
-    if (!result.rows.length) {
-      throw new Error(
-        `Unable to attach Airwallex intent to payment ${paymentId}`
-      );
-    }
-  
-    return result.rows[0];
-  };
+  }
+
+  return result.rows[0];
+};
 
 /**
  * Release a payment claim when PaymentIntent creation fails
